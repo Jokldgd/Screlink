@@ -1,0 +1,11 @@
+# 依赖
+node_modules/
+
+# 运行时生成的 TLS 证书（selfsigned）
+certs/
+
+# 日志与临时文件
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

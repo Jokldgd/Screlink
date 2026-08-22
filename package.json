@@ -1,0 +1,28 @@
+{
+  "name": "screlink",
+  "version": "0.1.0",
+  "description": "Screlink —— 轻量级浏览器屏幕共享：主机一键共享屏幕，观看者凭房间链接在浏览器中实时观看。信令服务器使用 Node.js，音视频通过 WebRTC 点对点传输。",
+  "license": "MIT",
+  "type": "module",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "start:https": "node server/index.js --https",
+    "dev": "node --watch server/index.js",
+    "test": "node scripts/smoke-test.js"
+  },
+  "keywords": [
+    "screen-share",
+    "webrtc",
+    "screensharing",
+    "signaling",
+    "websocket"
+  ],
+  "dependencies": {
+    "selfsigned": "^2.4.1",
+    "ws": "^8.18.0"
+  }
+}

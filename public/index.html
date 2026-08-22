@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Screlink · 屏幕共享</title>
+  <meta name="description" content="Screlink —— 轻量级浏览器屏幕共享：一键共享屏幕，观看者凭房间链接实时观看。" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='42' fill='%234f8cff'/%3E%3Ccircle cx='50' cy='50' r='16' fill='%230f1115'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">◉</span>
+      <span class="name">Screlink</span>
+      <span id="app-version" class="version"></span>
+    </div>
+    <div class="tagline">浏览器里的屏幕共享</div>
+  </header>
+
+  <main>
+    <!-- 落地页 -->
+    <section id="landing" class="panel">
+      <div class="tabs" role="tablist">
+        <button id="tab-join" class="tab active" role="tab" aria-selected="true">加入观看</button>
+        <button id="tab-host" class="tab" role="tab" aria-selected="false">共享屏幕</button>
+      </div>
+
+      <div id="join-panel" class="tab-panel">
+        <p class="lead">输入主持人分享的房间号</p>
+        <div class="row">
+          <input id="room-input" placeholder="例如 ABC-123" maxlength="8"
+                 spellcheck="false" autocomplete="off" aria-label="房间号" />
+          <button id="join-btn" class="primary">加入房间</button>
+        </div>
+        <p class="hint">也可以直接打开主持人发来的链接，会自动加入。</p>
+      </div>
+
+      <div id="host-panel" class="tab-panel" hidden>
+        <p class="lead">选择要共享的屏幕或窗口</p>
+        <label class="checkbox">
+          <input type="checkbox" id="audio-checkbox" /> 同时共享系统声音
+        </label>
+        <button id="share-btn" class="primary big">开始共享屏幕</button>
+        <p class="hint">建议使用 Chrome / Edge。首次共享需要授权屏幕捕获。</p>
+      </div>
+    </section>
+
+    <!-- 主持人视图 -->
+    <section id="host-view" class="panel" hidden>
+      <div class="room-card">
+        <h2 class="card-title">共享中</h2>
+        <div class="room-code" id="room-code">------</div>
+        <p class="hint">把房间号或下面的链接发给观看者</p>
+
+        <div class="row">
+          <input id="share-link" readonly aria-label="分享链接" />
+          <button id="copy-link" class="secondary">复制链接</button>
+        </div>
+        <div id="lan-links" class="lan-links"></div>
+
+        <div class="meta">
+          <span>观看人数：<b id="viewer-count">0</b></span>
+          <span id="host-status" class="status-dot on">共享中</span>
+        </div>
+
+        <video id="preview-video" autoplay muted playsinline></video>
+
+        <button id="stop-btn" class="danger">停止共享</button>
+      </div>
+    </section>
+
+    <!-- 观看者视图 -->
+    <section id="viewer-view" class="panel" hidden>
+      <div class="player">
+        <video id="remote-video" autoplay playsinline></video>
+        <div id="viewer-status" class="viewer-status">已加入房间，等待画面…</div>
+      </div>
+      <div class="player-meta">
+        <span>房间 <b id="viewer-room"></b></span>
+        <button id="leave-btn" class="secondary">退出观看</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <footer class="footer">
+    Screlink · 画面通过 WebRTC 点对点传输，不经过服务器
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
