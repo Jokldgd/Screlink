@@ -49,9 +49,10 @@ export function createStaticHandler(publicDir = config.publicDir) {
         return;
       }
       const ext = path.extname(filePath).toLowerCase();
+      // 全部资源 no-cache：前端零构建、体积小，避免浏览器缓存旧页面/旧 JS 造成排查困扰
       res.writeHead(200, {
         "content-type": MIME[ext] || "application/octet-stream",
-        "cache-control": ext === ".html" ? "no-cache" : "public, max-age=3600",
+        "cache-control": "no-cache",
       });
       res.end(data);
     });
