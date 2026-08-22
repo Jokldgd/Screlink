@@ -86,7 +86,7 @@ npm start
 
 ## 版本
 
-当前版本 **v0.1.0**，采用语义化版本（SemVer）。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **v0.2.0**，采用语义化版本（SemVer）。变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 路线图
 
