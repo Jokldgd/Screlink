@@ -1,0 +1,6 @@
+# Caddy 配置：$DOMAIN 由 docker-compose 从 .env 注入
+# Caddy 会自动为 $DOMAIN 申请并续期 Let's Encrypt 证书
+{$DOMAIN} {
+    encode gzip
+    reverse_proxy screlink:8787
+}

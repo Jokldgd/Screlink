@@ -1,0 +1,9 @@
+node_modules
+certs
+.git
+.gitignore
+*.log
+.DS_Store
+docker-compose.yml
+.env
+deploy

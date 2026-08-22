@@ -1,0 +1,53 @@
+name: screlink
+
+services:
+  # Screlink 信令 + 页面（仅内网，Caddy 对外 HTTPS 反代）
+  screlink:
+    build: .
+    restart: unless-stopped
+    environment:
+      # 下发给浏览器的 TURN 地址（公网可达），地址与 DOMAIN 一致
+      SCRELINK_TURN: "turn:${DOMAIN}:3478?transport=udp,turn:${DOMAIN}:3478?transport=tcp"
+      SCRELINK_TURN_USER: "${TURN_USER}"
+      SCRELINK_TURN_PASS: "${TURN_PASS}"
+    expose:
+      - "8787"
+    networks: [screlink]
+
+  # TURN 中继：跨网打洞失败时的兜底。使用 host 网络以直接暴露中继端口。
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./deploy/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    # 从 .env 生成凭据文件，再启动 turnserver
+    entrypoint: >
+      /bin/sh -c 'printf "user=%s:%s\n" "${TURN_USER}" "${TURN_PASS}" > /etc/coturn/turnuserdb.conf && exec turnserver -c /etc/coturn/turnserver.conf'
+    environment:
+      TURN_USER: "${TURN_USER}"
+      TURN_PASS: "${TURN_PASS}"
+
+  # Caddy：自动申请/续期 HTTPS 证书，反代到 Screlink（含 WebSocket）
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: "${DOMAIN}"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - screlink
+    networks: [screlink]
+
+networks:
+  screlink:
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -78,6 +78,10 @@ npm start
 
 > 说明：无 STUN/TURN 时，同一局域网内可正常观看；跨公网（如手机流量）观看基本需要 TURN。
 
+### Docker 一键部署（推荐）
+
+仓库内已带 `docker-compose.yml`：**Screlink + coturn(TURN) + Caddy(自动 HTTPS)**。详见 [DEPLOY.md](DEPLOY.md)。在境外轻量云服务器（免备案）上一行命令即可上线。
+
 ## 文档
 
 - [架构说明](docs/ARCHITECTURE.md)
