@@ -1,0 +1,31 @@
+name: screlink-ip
+
+# ===== 无域名 / IP 直连模式（免备案）=====
+# 使用公网 IP + 非标端口，不依赖域名/Caddy。
+#   - 观看者：http://<公网IP>:8787
+#   - 主机(共享)：https://<公网IP>:8788 （自签名，点一次继续访问）
+#   - 媒体：coturn 中继
+services:
+  screlink:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8787:8787"   # 观看（HTTP）
+      - "8788:8788"   # 主机共享（HTTPS 自签名）
+    environment:
+      # 下发给浏览器的 TURN 地址（公网可达）
+      SCRELINK_TURN: "turn:${PUBLIC_IP}:3478?transport=udp,turn:${PUBLIC_IP}:3478?transport=tcp"
+      SCRELINK_TURN_USER: "${TURN_USER}"
+      SCRELINK_TURN_PASS: "${TURN_PASS}"
+
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./deploy/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    entrypoint: >
+      /bin/sh -c 'printf "user=%s:%s\n" "${TURN_USER}" "${TURN_PASS}" > /etc/coturn/turnuserdb.conf && exec turnserver -c /etc/coturn/turnserver.conf'
+    environment:
+      TURN_USER: "${TURN_USER}"
+      TURN_PASS: "${TURN_PASS}"

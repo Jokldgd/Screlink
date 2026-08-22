@@ -73,12 +73,9 @@ export function createApp(options = {}) {
   const httpServer = http.createServer(handleRequest);
   const wss = signaling.attach(httpServer);
 
-  let httpsServer = null;
-  let wssTls = null;
-  if (options.https) {
-    httpsServer = https.createServer(loadTlsOptions(), handleRequest);
-    wssTls = signaling.attach(httpsServer);
-  }
+  // 始终同时创建 HTTPS（自签名）监听：观看者走 HTTP(8787)、主机走 HTTPS(8788) 以满足屏幕捕获的安全上下文要求
+  const httpsServer = https.createServer(loadTlsOptions(), handleRequest);
+  const wssTls = signaling.attach(httpsServer);
 
   return { signaling, httpServer, httpsServer, wss, wssTls };
 }

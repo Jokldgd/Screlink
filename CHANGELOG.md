@@ -2,6 +2,19 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer），格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.3.0] - 2026-08-22
+
+### 新增
+
+- **同时监听 HTTP(8787) + HTTPS(8788)**：`npm start` 即可同时对外提供页面/信令（HTTP）与主机共享所需的 HTTPS 安全上下文（自签名证书），不再需要二选一
+- **无域名 / IP 直连模式**：新增 `docker-compose.ip.yml`，用公网 IP + 非标端口部署，**免 ICP 备案**（观看者 `http://IP:8787`，主机共享 `https://IP:8788`，媒体走 coturn）
+- 部署文档区分「IP 模式」与「域名模式」两条路径
+
+### 变更
+
+- 服务端始终创建 HTTP+HTTPS 双监听（`npm start` 自动生成自签名证书）
+- 冒烟测试适配新的服务初始化
+
 ## [0.2.0] - 2026-08-22
 
 ### 新增

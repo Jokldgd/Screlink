@@ -62,7 +62,7 @@ const main = async () => {
   console.log("Screlink smoke test");
 
   // ---- 启动临时服务（0 端口） ----
-  const app = createApp({ https: false });
+  const app = createApp();
   app.httpServer.listen(0, "127.0.0.1");
   await once(app.httpServer, "listening");
   const port = app.httpServer.address().port;
