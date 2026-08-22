@@ -23,7 +23,7 @@ services:
       - ./deploy/turnserver.conf:/etc/coturn/turnserver.conf:ro
     # 从 .env 生成凭据文件，再启动 turnserver
     entrypoint: >
-      /bin/sh -c 'printf "user=%s:%s\n" "${TURN_USER}" "${TURN_PASS}" > /etc/coturn/turnuserdb.conf && exec turnserver -c /etc/coturn/turnserver.conf'
+      /bin/sh -c 'printf "user=%s:%s\n" "${TURN_USER}" "${TURN_PASS}" > /tmp/turnuserdb.conf && chmod 600 /tmp/turnuserdb.conf && exec turnserver -c /etc/coturn/turnserver.conf'
     environment:
       TURN_USER: "${TURN_USER}"
       TURN_PASS: "${TURN_PASS}"
