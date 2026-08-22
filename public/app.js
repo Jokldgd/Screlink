@@ -25,6 +25,7 @@ const state = {
 let appConfig = {
   version: null,
   stunUrls: ["stun:stun.l.google.com:19302"],
+  iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
   maxViewersPerRoom: 8,
   lanHttpUrls: [],
   lanHttpsUrls: [],
@@ -146,7 +147,7 @@ function onError(msg) {
 /* ---------------- WebRTC 辅助 ---------------- */
 
 function createPc(label) {
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: appConfig.stunUrls }] });
+  const pc = new RTCPeerConnection({ iceServers: appConfig.iceServers });
   const pendingIce = [];
   let remoteReady = false;
   pc.label = label;

@@ -2,6 +2,18 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer），格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.2.0] - 2026-08-22
+
+### 新增
+
+- **TURN 中继支持**：通过环境变量 `SCRELINK_TURN`（逗号分隔的 `turn:` 地址）、`SCRELINK_TURN_USER`、`SCRELINK_TURN_PASS` 配置，服务端经 `/api/config` 下发给两端；WebRTC 在 STUN 打洞失败时自动改用 TURN 中继，为跨公网观看铺路
+- `/api/config` 新增 `iceServers` 字段（STUN + 可选 TURN 的完整 ICE 配置）
+- README 增加 TURN / coturn 部署说明与配置项
+
+### 变更
+
+- 客户端 WebRTC 由 `stunUrls` 改用完整的 `iceServers` 配置
+
 ## [0.1.2] - 2026-08-22
 
 ### 修复

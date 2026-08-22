@@ -39,10 +39,25 @@ export function createApp(options = {}) {
       const httpPort = httpServer.address()?.port ?? config.port;
       const httpsPort = httpsServer?.address()?.port;
       const ips = lanIPv4s();
+      // 前端所需的 ICE 配置：STUN + 可选的 TURN 中继
+      const iceServers = [
+        { urls: config.stunUrls },
+        ...(config.turnUrls.length
+          ? [
+              {
+                urls: config.turnUrls,
+                ...(config.turnUser
+                  ? { username: config.turnUser, credential: config.turnPass }
+                  : {}),
+              },
+            ]
+          : []),
+      ];
       const body = {
         version: config.version,
         maxViewersPerRoom: config.maxViewersPerRoom,
         roomCodeLength: config.roomCodeLength,
+        iceServers,
         stunUrls: config.stunUrls,
         lanHttpUrls: ips.map((ip) => `http://${ip}:${httpPort}`),
         lanHttpsUrls: httpsPort ? ips.map((ip) => `https://${ip}:${httpsPort}`) : [],

@@ -40,6 +40,19 @@ export const config = {
     .map((s) => s.trim())
     .filter(Boolean),
 
+  /**
+   * TURN 中继配置（跨网打洞失败时的兜底）：
+   *  SCRELINK_TURN       逗号分隔的 turn:/turns: 地址，如 turn:turn.example.com:3478
+   *  SCRELINK_TURN_USER  用户名（可选）
+   *  SCRELINK_TURN_PASS  密码（可选）
+   */
+  turnUrls: (process.env.SCRELINK_TURN || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+  turnUser: process.env.SCRELINK_TURN_USER || "",
+  turnPass: process.env.SCRELINK_TURN_PASS || "",
+
   /** 自签名证书有效期（天），仅 HTTPS 模式使用 */
   certDays: Number(process.env.SCRELINK_CERT_DAYS || 365),
 };

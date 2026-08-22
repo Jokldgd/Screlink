@@ -100,14 +100,20 @@ WebSocket 端点：`/ws`。所有消息均为 UTF-8 编码的 JSON 文本，格�
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "maxViewersPerRoom": 8,
   "roomCodeLength": 6,
+  "iceServers": [
+    { "urls": ["stun:stun.l.google.com:19302"] },
+    { "urls": ["turn:turn.example.com:3478"], "username": "user", "credential": "pass" }
+  ],
   "stunUrls": ["stun:stun.l.google.com:19302"],
   "lanHttpUrls": ["http://192.168.31.7:8787"],
   "lanHttpsUrls": []
 }
 ```
+
+- `iceServers`：客户端构建 `RTCPeerConnection` 时使用的完整 ICE 配置（STUN + 可配置的 TURN 中继）。`turnUrls` 为空时仅含 STUN。
 
 ## 生命周期与清理
 

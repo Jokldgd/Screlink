@@ -83,8 +83,9 @@ const main = async () => {
   assert.equal(health.version, pkg.version, "版本号与 package.json 一致");
   const cfg = await fetch(`${base}/api/config`).then((r) => r.json());
   assert.equal(cfg.version, pkg.version);
-  assert.ok(cfg.stunUrls.length > 0);
-  ok("health & config API");
+  assert.ok(Array.isArray(cfg.iceServers) && cfg.iceServers.length > 0, "iceServers 存在");
+  assert.ok(cfg.iceServers[0].urls.length > 0, "含 STUN");
+  ok("health & config API (iceServers present)");
 
   // ---- 建房间 ----
   const host = new Client(`ws://127.0.0.1:${port}/ws`);

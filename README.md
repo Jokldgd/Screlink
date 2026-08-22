@@ -49,6 +49,9 @@ npm start
 | `SCRELINK_HOST` | `0.0.0.0` | 监听地址 |
 | `SCRELINK_MAX_VIEWERS` | `8` | 每房间最大观看人数 |
 | `SCRELINK_STUN` | `stun:stun.l.google.com:19302` | STUN 服务器，逗号分隔 |
+| `SCRELINK_TURN` | 空 | TURN 中继地址，逗号分隔（如 `turn:turn.example.com:3478`） |
+| `SCRELINK_TURN_USER` | 空 | TURN 用户名（可选） |
+| `SCRELINK_TURN_PASS` | 空 | TURN 密码（可选） |
 | `SCRELINK_CERT_DAYS` | `365` | 自签名证书有效期（天） |
 
 ## 部署（公网）
@@ -62,7 +65,18 @@ npm start
    }
    ```
 
-3. 防火墙放行对应端口。观看者打开 `https://share.example.com/#room=XXX-XXX` 即可。
+3. **配置 TURN 中继**（跨网打洞失败时的兜底，公网必配）。在同机安装 [coturn](https://github.com/coturn/coturn)，然后启动 Screlink：
+
+   ```bash
+   SCRELINK_TURN=turn:your-turn-host:3478 \
+   SCRELINK_TURN_USER=user \
+   SCRELINK_TURN_PASS=pass \
+   npm start
+   ```
+
+4. 防火墙放行对应端口。观看者打开 `https://share.example.com/#room=XXX-XXX` 即可。
+
+> 说明：无 STUN/TURN 时，同一局域网内可正常观看；跨公网（如手机流量）观看基本需要 TURN。
 
 ## 文档
 
