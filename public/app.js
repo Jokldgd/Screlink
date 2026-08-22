@@ -39,6 +39,11 @@ const ERR_TEXT = {
   "unknown-type": "未知消息类型",
 };
 
+/** 调试日志：在控制台输出关键信令与连接状态（F12 可见） */
+function dbg(...args) {
+  console.debug("[screlink]", ...args);
+}
+
 /* ---------------- 初始化 ---------------- */
 
 async function loadConfig() {
@@ -115,6 +120,7 @@ function handleSocketClosed() {
 }
 
 function handleSignal(msg) {
+  dbg("signal in:", msg.type);
   switch (msg.type) {
     case "created": return onCreated(msg);
     case "joined": return onJoined(msg);
@@ -160,6 +166,33 @@ function createPc(label) {
     pendingIce.splice(0).forEach((c) => pc.addIceCandidate(c).catch(() => {}));
   };
   return pc;
+}
+
+/**
+ * 把视频编码器限定为 VP8 / H.264。
+ * 修复 Windows 上 Chromium 内核协商到 VP9/AV1 时硬件解码异常导致的黑屏。
+ */
+function pinVideoCodecs(pc) {
+  try {
+    const caps = RTCRtpSender.getCapabilities?.("video");
+    if (!caps) return;
+    const pref = [];
+    for (const name of ["VP8", "H264"]) {
+      const found = caps.codecs.find(
+        (c) => c.mimeType.toLowerCase() === `video/${name.toLowerCase()}`
+      );
+      if (found) pref.push(found);
+    }
+    if (!pref.length) return;
+    for (const t of pc.getTransceivers()) {
+      if (t.sender?.track?.kind === "video") {
+        t.setCodecPreferences(pref);
+        dbg("codec preference set:", pref.map((c) => c.mimeType).join(", "));
+      }
+    }
+  } catch (err) {
+    console.warn("setCodecPreferences failed", err);
+  }
 }
 
 /* ---------------- 主机逻辑 ---------------- */
@@ -226,6 +259,8 @@ function onViewerJoined(msg) {
   for (const track of state.localStream.getTracks()) {
     pc.addTrack(track, state.localStream);
   }
+  pinVideoCodecs(pc);
+  dbg("host: send offer to viewer", peerId);
   pc.createOffer()
     .then((offer) => pc.setLocalDescription(offer))
     .then(() => send({ type: "offer", to: peerId, sdp: pc.localDescription }))
@@ -369,21 +404,43 @@ function onOffer(msg) {
     pc = createPc("host");
     pc.peerTarget = msg.from;
     pc.onconnectionstatechange = () => {
-      const map = {
-        connecting: "正在连接…",
-        connected: "正在播放",
-        disconnected: "连接中断，尝试重连…",
-        failed: "连接失败",
-      };
+      dbg("viewer: pc state ->", pc.connectionState);
+      const video = $("remote-video");
       if (pc.connectionState === "connected") {
-        $("viewer-status").textContent = "正在播放";
-      } else if (map[pc.connectionState]) {
-        $("viewer-status").textContent = map[pc.connectionState];
+        if (!video.srcObject) $("viewer-status").textContent = "已连接，等待画面…";
+        // 有画面时状态由 ontrack / onloadeddata 更新
+      } else if (pc.connectionState === "failed") {
+        $("viewer-status").textContent = "连接失败（可能被防火墙拦截）";
+      } else if (pc.connectionState === "disconnected") {
+        $("viewer-status").textContent = "连接中断，等待重连…";
+      } else {
+        $("viewer-status").textContent = "正在连接…";
       }
     };
     pc.ontrack = (e) => {
-      $("remote-video").srcObject = e.streams[0];
-      $("viewer-status").textContent = "正在播放";
+      const video = $("remote-video");
+      // 兜底：个别浏览器不填充 streams[0]，用 track 自行组装
+      const stream =
+        e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
+      dbg("viewer: track received", e.track.kind, "streams:", e.streams.length);
+      video.srcObject = stream;
+      video.onloadeddata = () => {
+        dbg("viewer: video loadeddata", video.videoWidth + "x" + video.videoHeight);
+        $("viewer-status").textContent =
+          video.videoWidth > 0
+            ? `正在播放 ${video.videoWidth}×${video.videoHeight}`
+            : "正在播放";
+      };
+      // 显式播放；若被自动播放策略拦截（带声音时常见）则静音出画面
+      video.play().catch((err) => {
+        dbg("viewer: autoplay blocked", err.name);
+        video.muted = true;
+        video.play().catch(() => {
+          $("viewer-status").textContent = "点击画面开始播放";
+          video.addEventListener("click", () => video.play().catch(() => {}), { once: true });
+        });
+        $("unmute-btn").hidden = false;
+      });
     };
     state.hostPc = pc;
   }
@@ -462,6 +519,49 @@ function bindEvents() {
   $("copy-link").addEventListener("click", () =>
     copyText($("share-link").value, "已复制分享链接")
   );
+
+  $("unmute-btn").addEventListener("click", () => {
+    const v = $("remote-video");
+    v.muted = false;
+    v.play().catch(() => {});
+    $("unmute-btn").hidden = true;
+  });
+
+  // 诊断工具：在观看页 F12 控制台运行 __screlinkDebug() 查看连接与视频状态
+  window.__screlinkDebug = () => {
+    const v = $("remote-video");
+    const pc = state.hostPc;
+    return {
+      role: state.role,
+      room: state.room,
+      wsReadyState: state.ws ? state.ws.readyState : null,
+      pc: pc
+        ? {
+            connectionState: pc.connectionState,
+            iceConnectionState: pc.iceConnectionState,
+            signalingState: pc.signalingState,
+          }
+        : null,
+      video: v
+        ? {
+            srcObjectSet: !!v.srcObject,
+            paused: v.paused,
+            videoWidth: v.videoWidth,
+            videoHeight: v.videoHeight,
+            readyState: v.readyState,
+            muted: v.muted,
+            error: v.error && v.error.message,
+          }
+        : null,
+      receivers: pc
+        ? pc.getReceivers().map((r) => ({
+            kind: r.track.kind,
+            trackReadyState: r.track.readyState,
+            codecs: r.getParameters().codecs.map((c) => c.mimeType),
+          }))
+        : [],
+    };
+  };
 
   // 通过 #room=ABC-123 链接打开时自动加入
   const m = location.hash.match(/room=([A-Za-z0-9-]+)/);
