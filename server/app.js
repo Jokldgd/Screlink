@@ -1,7 +1,7 @@
 import http from "node:http";
 import https from "node:https";
 import os from "node:os";
-import { WebSocketServer, WebSocket } from "ws";
+import httpProxy from "http-proxy";
 import { config } from "./config.js";
 import { SignalingServer, normalizeRoomCode } from "./signaling.js";
 import { createStaticHandler } from "./static.js";
@@ -19,43 +19,21 @@ export function lanIPv4s() {
 }
 
 /**
- * 把 /livekit 的 WebSocket 双向代理到 LiveKit（targetBase，如 ws://host.docker.internal:7880）。
- * 这样浏览器用「同源 wss/ws」连接，规避 HTTPS 页面连明文 ws 的混合内容拦截。
- * 关键：先等上游 LiveKit 连好，再转发客户端消息（缓冲首帧，避免竞态丢包）；转发子协议。
+ * 把 /livekit 的 HTTP 与 WebSocket 反代到 LiveKit（targetBase，如 ws://host.docker.internal:7880）。
+ * 用 http-proxy（经实战验证的 WS 代理）处理 upgrade，浏览器用「同源 wss/ws」连接规避混合内容。
  */
 function attachLiveKitProxy(server, targetBase) {
-  const wss = new WebSocketServer({ noServer: true });
-  wss.on("connection", (clientWs, req) => {
-    const targetPath = (req.url || "").replace(/^\/livekit/, "") || "/";
-    const protoHeader = req.headers["sec-websocket-protocol"];
-    const protocols = protoHeader ? protoHeader.split(",").map((s) => s.trim()).filter(Boolean) : [];
-    const upstream = protocols.length
-      ? new WebSocket(targetBase + targetPath, protocols)
-      : new WebSocket(targetBase + targetPath);
-    const buffer = [];
-    let upOpen = false;
-    upstream.on("open", () => {
-      upOpen = true;
-      for (const d of buffer) upstream.send(d);
-      buffer.length = 0;
-    });
-    upstream.on("message", (d) => clientWs.readyState === WebSocket.OPEN && clientWs.send(d));
-    upstream.on("close", () => clientWs.close());
-    upstream.on("error", (e) => {
-      console.error("livekit proxy upstream error:", e?.message);
-      clientWs.close();
-    });
-    clientWs.on("message", (d) => {
-      if (upOpen) upstream.send(d);
-      else buffer.push(d);
-    });
-    clientWs.on("close", () => upstream.close());
+  const proxy = httpProxy.createProxyServer({ ws: true, target: targetBase, changeOrigin: true });
+  proxy.on("error", (err, _req, res, socketHead) => {
+    console.error("livekit proxy error:", err?.message);
+    if (socketHead && !socketHead.writableEnded) { try { socketHead.end(); } catch { /* ignore */ } }
+    else if (res && !res.headersSent) { try { res.writeHead(502); res.end("502"); } catch { /* ignore */ } }
   });
   server.on("upgrade", (req, socket, head) => {
     if (!req.url || !req.url.startsWith("/livekit")) return; // 其它（如 /ws）交给信令 WSS
-    wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+    proxy.ws(req, socket, head, { target: targetBase });
   });
-  return wss;
+  return proxy;
 }
 
 /**
