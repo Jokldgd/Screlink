@@ -343,10 +343,11 @@ function setupViewerPc(peerId) {
     .catch((err) => console.error("createOffer failed", err));
 }
 
-/** 按当前画质档位设置视频发送码率上限与降级策略 */
+/** 按当前画质档位 + 观看者数分配设置每路视频发送码率上限与降级策略
+    （初始即按人数收敛，避免新加入者以全码率起步撞拥塞） */
 function applyMaxBitrate(pc) {
   if (!state.quality) return;
-  const bps = state.quality.maxBitrate;
+  const bps = perViewerCap();
   pc._bitrate = bps;
   applyBitrate(pc, bps);
   dbg("host: set maxBitrate", bps, "degradation:", state.quality.degradation);
@@ -499,6 +500,7 @@ const VIEWER_QUALITY_SPEC = {
 /** 按观看者选择的清晰度设置该连接的编码参数（分辨率缩放 + 码率上限） */
 function applyViewerQuality(pc, quality) {
   const spec = VIEWER_QUALITY_SPEC[quality] || VIEWER_QUALITY_SPEC["1080"];
+  const bps = Math.min(spec.maxBitrate, perViewerCap()); // 同时受观看者数与人数预算约束
   const sender = pc.getSenders().find((s) => s.track?.kind === "video");
   const track = sender?.track;
   const srcH = track?.getSettings?.().height || 1080;
@@ -510,7 +512,7 @@ function applyViewerQuality(pc, quality) {
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
       const enc = params.encodings[0];
       enc.scaleResolutionDownBy = scale;
-      enc.maxBitrate = spec.maxBitrate;
+      enc.maxBitrate = bps;
       params.degradationPreference = spec.degradation;
       s.setParameters(params).catch((e) => console.warn("setViewerQuality failed", e));
     } catch (err) {
@@ -518,8 +520,8 @@ function applyViewerQuality(pc, quality) {
     }
   }
   pc._viewerQuality = quality;
-  pc._bitrate = spec.maxBitrate; // 与自适应码率联动：降档可低于此值，回升不超过此值
-  if (pc._adapt) pc._adapt.initial = spec.maxBitrate;
+  pc._bitrate = bps; // 与自适应码率联动：降档可低于此值，回升不超过此值
+  if (pc._adapt) pc._adapt.initial = bps;
   dbg("host: viewer", pc.peerTarget, "quality ->", quality, "scale", scale, "bitrate", spec.maxBitrate);
 }
 
