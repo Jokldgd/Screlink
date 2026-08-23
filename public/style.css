@@ -296,6 +296,18 @@ button.big { width: 100%; padding: 14px; font-size: 16px; }
   white-space: nowrap;
 }
 .ctrl-btn:hover { background: rgba(255, 255, 255, .28); }
+.ctrl-select {
+  background: rgba(255, 255, 255, .14);
+  border: none;
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ctrl-select:hover { background: rgba(255, 255, 255, .28); }
+.ctrl-select option { color: #0f1115; }
 .volume {
   width: 90px;
   accent-color: var(--accent);
@@ -313,7 +325,19 @@ button.big { width: 100%; padding: 14px; font-size: 16px; }
   border-radius: 999px;
   font-size: 13px;
   color: #cfd6e0;
+  /* 随控制条一起显隐：鼠标不动 2 秒后隐藏（播放时更沉浸） */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
 }
+.player.controls-visible .viewer-status { opacity: 1; }
+.unmute-btn {
+  /* 与 viewer-status 相同：随控制条显隐，避免残留遮挡画面 */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
+}
+.player.controls-visible .unmute-btn { opacity: 1; pointer-events: auto; }
 .player-meta {
   display: flex;
   justify-content: space-between;
@@ -362,4 +386,16 @@ button.big { width: 100%; padding: 14px; font-size: 16px; }
   .row { flex-direction: column; }
   .room-code { font-size: 32px; letter-spacing: 4px; }
   .panel { padding: 20px; }
+}
+
+/* 非 HTTPS 时的共享警告条 */
+.secure-warning {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  background: rgba(214, 133, 42, .12);
+  border: 1px solid rgba(214, 133, 42, .5);
+  border-radius: 8px;
+  color: #e8a23e;
+  font-size: 13px;
+  line-height: 1.7;
 }

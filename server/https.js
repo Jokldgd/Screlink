@@ -4,7 +4,10 @@ import path from "node:path";
 import selfsigned from "selfsigned";
 import { config } from "./config.js";
 
-/** 收集本机局域网 IPv4 地址，写入证书 SAN 以减轻浏览器告警 */
+/** 收集本机局域网 IPv4 地址，写入证书 SAN 以减轻浏览器告警；
+ *  支持通过环境变量追加公网 IP / 域名（逗号分隔）：
+ *    SCRELINK_CERT_SAN_IPS  如 114.67.168.228,1.2.3.4
+ *    SCRELINK_CERT_SAN_DNS  如 screlink.example.com */
 function localAltNames() {
   const names = [
     { type: 2, value: "localhost" },
@@ -17,6 +20,14 @@ function localAltNames() {
         names.push({ type: 7, ip: net.address });
       }
     }
+  }
+  for (const ip of (process.env.SCRELINK_CERT_SAN_IPS || "")
+    .split(",").map((s) => s.trim()).filter(Boolean)) {
+    names.push({ type: 7, ip });
+  }
+  for (const host of (process.env.SCRELINK_CERT_SAN_DNS || "")
+    .split(",").map((s) => s.trim()).filter(Boolean)) {
+    names.push({ type: 2, value: host });
   }
   return names;
 }

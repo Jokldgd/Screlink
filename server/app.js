@@ -59,6 +59,7 @@ export function createApp(options = {}) {
         roomCodeLength: config.roomCodeLength,
         iceServers,
         stunUrls: config.stunUrls,
+        httpsPort: httpsPort ?? null,
         lanHttpUrls: ips.map((ip) => `http://${ip}:${httpPort}`),
         lanHttpsUrls: httpsPort ? ips.map((ip) => `https://${ip}:${httpsPort}`) : [],
       };

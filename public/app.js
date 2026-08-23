@@ -31,23 +31,42 @@ let appConfig = {
   stunUrls: ["stun:stun.l.google.com:19302"],
   iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
   maxViewersPerRoom: 8,
+  httpsPort: null,
   lanHttpUrls: [],
   lanHttpsUrls: [],
 };
 
-/* 推流画质档位：帧率上限 + 码率上限 + 降级策略
-   contentHint:  "motion"=流畅优先 / "detail"=锐利优先
-   degradation:  带宽不足时如何取舍
+/* 推流画质：分辨率 × 帧率 自由组合
+   - 分辨率决定基础码率与编码倾向（contentHint）
+   - 帧率按比例调整码率（15fps=0.6x / 30fps=1.0x / 60fps=1.5x）
+   - 降级策略：60fps 保帧率（motion 场景），其余保分辨率（用户显式选了清晰度）
+   degradation:
      maintain-framerate  保帧率（可能降分辨率）——适合播放视频/动态内容
-     maintain-resolution 保分辨率（可能降帧率）——适合静态屏幕/文字，清晰可读
-     balanced            折中 */
-const QUALITY = {
-  smooth: { label: "流畅", frameRate: { ideal: 60, max: 60 }, maxBitrate: 10_000_000, contentHint: "motion", degradation: "maintain-framerate" },
-  auto:   { label: "自动", frameRate: { ideal: 60, max: 60 }, maxBitrate: 6_000_000, contentHint: "detail", degradation: "balanced" },
-  high:   { label: "清晰", frameRate: { ideal: 30, max: 30 }, maxBitrate: 6_000_000, contentHint: "detail", degradation: "maintain-resolution" },
-  medium: { label: "中", frameRate: { ideal: 30, max: 30 }, maxBitrate: 3_000_000, contentHint: "detail", degradation: "balanced" },
-  low:    { label: "低", frameRate: { ideal: 24, max: 24 }, maxBitrate: 2_000_000, contentHint: "detail", degradation: "balanced" },
+     maintain-resolution 保分辨率（可能降帧率）——适合静态屏幕/文字，清晰可读 */
+const RESOLUTION_SPEC = {
+  "360": { label: "360p", maxBitrate: 1_200_000, contentHint: "motion" },
+  "720": { label: "720p", maxBitrate: 3_000_000, contentHint: "detail" },
+  "1080": { label: "1080p", maxBitrate: 6_000_000, contentHint: "detail" },
 };
+const FPS_SPEC = {
+  "15": { label: "15fps", bitrateFactor: 0.6 },
+  "30": { label: "30fps", bitrateFactor: 1.0 },
+  "60": { label: "60fps", bitrateFactor: 1.5 },
+};
+/** 读取画质/帧率下拉，组合出推流参数（与后端/自适应码率共用的唯一入口） */
+function buildQuality() {
+  const res = $("resolution-select")?.value || "720";
+  const fps = $("fps-select")?.value || "30";
+  const r = RESOLUTION_SPEC[res] || RESOLUTION_SPEC["720"];
+  const f = FPS_SPEC[fps] || FPS_SPEC["30"];
+  return {
+    label: `${r.label} @ ${f.label}`,
+    frameRate: { ideal: Number(fps), max: Number(fps) },
+    maxBitrate: Math.round(r.maxBitrate * f.bitrateFactor),
+    contentHint: r.contentHint,
+    degradation: fps === "60" ? "maintain-framerate" : "maintain-resolution",
+  };
+}
 
 const ERR_TEXT = {
   "room-not-found": "房间不存在或共享已结束",
@@ -153,6 +172,7 @@ function handleSignal(msg) {
     case "ice": return onIce(msg);
     case "host-left": return onHostLeft(msg);
     case "renegotiate": return onRenegotiate(msg);
+    case "set-quality": return onSetQuality(msg);
     default: console.warn("unknown signal", msg);
   }
 }
@@ -222,12 +242,18 @@ function pinVideoCodecs(pc) {
 async function startSharing() {
   if (state.role) return;
   if (!navigator.mediaDevices?.getDisplayMedia) {
-    toast("当前浏览器不支持屏幕捕获，请使用最新版 Chrome / Edge");
+    // 区分根因：非安全上下文（HTTP/IP 访问）与浏览器真的不支持
+    if (!window.isSecureContext) {
+      toast("无法共享：屏幕捕获需要 HTTPS 安全连接。请使用 https:// 地址打开本页（见下方提示），而非 http://");
+    } else {
+      toast("当前浏览器不支持屏幕捕获，请使用最新版 Chrome / Edge");
+    }
     return;
   }
   state.includeAudio = $("audio-checkbox").checked;
-  const quality = QUALITY[$("quality-select").value] || QUALITY.auto;
+  const quality = buildQuality(); // 按 分辨率 × 帧率 下拉组合推流参数
   state.quality = quality;
+  dbg("host: quality", quality.label, "maxBitrate", quality.maxBitrate, "fps", quality.frameRate.max);
   setBusy($("share-btn"), true, "请在弹窗中选择屏幕…");
   let stream;
   try {
@@ -287,6 +313,7 @@ function onViewerJoined(msg) {
 /** 为某个观看者建立/重建一条连接并发送 offer（用于新加入或重连） */
 function setupViewerPc(peerId) {
   const old = state.viewerPcs.get(peerId);
+  const prevQuality = old?._viewerQuality; // 重连时继承该观看者上次选择的清晰度
   if (old) {
     try { stopBitrateAdaptation(old); old.close(); } catch { /* ignore */ }
   }
@@ -302,6 +329,10 @@ function setupViewerPc(peerId) {
     pc.addTrack(track, state.localStream);
   }
   pinVideoCodecs(pc);
+  // 若该观看者之前选过非默认清晰度，重建后恢复其选择（scale/码率在 offer 前生效）
+  if (prevQuality && prevQuality !== "1080") {
+    try { applyViewerQuality(pc, prevQuality); } catch { /* ignore */ }
+  }
   dbg("host: send offer to viewer", peerId);
   pc.createOffer()
     .then((offer) => pc.setLocalDescription(offer))
@@ -328,7 +359,10 @@ function applyBitrate(pc, bps) {
       const params = sender.getParameters();
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
       params.encodings[0].maxBitrate = bps;
-      if (state.quality?.degradation) params.degradationPreference = state.quality.degradation;
+      // 观看者已指定清晰度时用其降级策略，否则用主机档位的策略
+      if (!pc._viewerQuality && state.quality?.degradation) {
+        params.degradationPreference = state.quality.degradation;
+      }
       sender.setParameters(params).catch(() => {});
     } catch (err) {
       console.warn("setParameters failed", err);
@@ -424,6 +458,62 @@ function onRenegotiate(msg) {
   if (!state.viewerPcs.has(peerId)) return;
   dbg("host: renegotiate ->", peerId);
   setupViewerPc(peerId);
+}
+
+/* ---------------- 观看者清晰度切换 ----------------
+ * 观看端选择清晰度（1080p/720p/360p）后发送 set-quality 信号；
+ * 主机针对该观看者的连接调整分辨率缩放与码率上限，再重新协商。
+ * 每个观看者独立调节，互不影响（帧率跟随主机推流设置）。 */
+const VIEWER_QUALITY_SPEC = {
+  "1080": { scaleH: 1080, maxBitrate: 9_000_000, degradation: "maintain-framerate" },
+  "720":  { scaleH: 720,  maxBitrate: 4_500_000, degradation: "maintain-resolution" },
+  "360":  { scaleH: 360,  maxBitrate: 1_800_000, degradation: "maintain-resolution" },
+};
+
+/** 按观看者选择的清晰度设置该连接的编码参数（分辨率缩放 + 码率上限） */
+function applyViewerQuality(pc, quality) {
+  const spec = VIEWER_QUALITY_SPEC[quality] || VIEWER_QUALITY_SPEC["1080"];
+  const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+  const track = sender?.track;
+  const srcH = track?.getSettings?.().height || 1080;
+  const scale = Math.max(1, Math.round((srcH / spec.scaleH) * 2) / 2); // 0.5 步进取整
+  for (const s of pc.getSenders()) {
+    if (s.track?.kind !== "video") continue;
+    try {
+      const params = s.getParameters();
+      if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+      const enc = params.encodings[0];
+      enc.scaleResolutionDownBy = scale;
+      enc.maxBitrate = spec.maxBitrate;
+      params.degradationPreference = spec.degradation;
+      s.setParameters(params).catch((e) => console.warn("setViewerQuality failed", e));
+    } catch (err) {
+      console.warn("setViewerQuality error", err);
+    }
+  }
+  pc._viewerQuality = quality;
+  pc._bitrate = spec.maxBitrate; // 与自适应码率联动：降档可低于此值，回升不超过此值
+  if (pc._adapt) pc._adapt.initial = spec.maxBitrate;
+  dbg("host: viewer", pc.peerTarget, "quality ->", quality, "scale", scale, "bitrate", spec.maxBitrate);
+}
+
+/** 对该观看者连接重新协商（切换清晰度后推送新的编码参数） */
+function renegotiateViewer(pc) {
+  pc.createOffer()
+    .then((offer) => pc.setLocalDescription(offer))
+    .then(() => send({ type: "offer", to: pc.peerTarget, sdp: pc.localDescription }))
+    .catch((err) => console.error("renegotiate offer failed", err));
+}
+
+/** 观看者请求切换清晰度：调整该观看者的编码并重新协商 */
+function onSetQuality(msg) {
+  if (state.role !== "host") return;
+  const pc = state.viewerPcs.get(msg.from);
+  if (!pc || pc.connectionState !== "connected") return;
+  const quality = VIEWER_QUALITY_SPEC[msg.quality] ? msg.quality : "1080";
+  if (quality === pc._viewerQuality) return; // 没变化就不重协商
+  applyViewerQuality(pc, quality);
+  renegotiateViewer(pc);
 }
 
 function onViewerLeft(msg) {
@@ -753,6 +843,17 @@ function switchTab(mode) {
 }
 
 function bindEvents() {
+  // 非 HTTPS 安全上下文时提示共享不可用，并给出正确的 HTTPS 入口
+  if (!window.isSecureContext) {
+    const hint = $("secure-hint");
+    if (hint) {
+      hint.textContent = appConfig.httpsPort
+        ? `https://${location.hostname}:${appConfig.httpsPort}/`
+        : `https://${location.hostname}/`;
+    }
+    $("secure-warning").hidden = false;
+  }
+
   $("tab-join").addEventListener("click", () => switchTab("join"));
   $("tab-host").addEventListener("click", () => switchTab("host"));
 
@@ -782,6 +883,15 @@ function bindEvents() {
     const v = $("remote-video");
     v.muted = !v.muted;
     updateAudioUI();
+  });
+
+  // 观看端选择清晰度：通知主机对该观看者重新推流
+  $("quality-select-viewer").addEventListener("change", (e) => {
+    if (state.role !== "viewer" || !state.ws) return;
+    const q = e.target.value;
+    send({ type: "set-quality", quality: q });
+    $("viewer-status").textContent = `切换清晰度 ${q}p 中…`;
+    toast(`切换清晰度：${q}p，请稍候`);
   });
 
   $("volume-range").addEventListener("input", () => {
@@ -821,7 +931,7 @@ function bindEvents() {
     clearTimeout(controlsHideTimer);
     playerEl.classList.remove("controls-visible");
   });
-  for (const id of ["mute-btn", "volume-range", "fit-btn", "fs-btn"]) {
+  for (const id of ["mute-btn", "volume-range", "fit-btn", "fs-btn", "unmute-btn", "quality-select-viewer"]) {
     $(id).addEventListener("mouseenter", keepControlsShown);
     $(id).addEventListener("mouseleave", showControlsTemporarily);
   }

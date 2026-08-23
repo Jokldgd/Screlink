@@ -38,18 +38,29 @@
 
       <div id="host-panel" class="tab-panel" hidden>
         <p class="lead">选择要共享的屏幕或窗口</p>
+        <div id="secure-warning" class="secure-warning" hidden>
+          ⚠️ 当前页面不是 HTTPS 安全连接，无法共享屏幕。<br />
+          请用 Chrome / Edge 打开 <b id="secure-hint"></b> 后重试。
+        </div>
         <label class="checkbox">
           <input type="checkbox" id="audio-checkbox" /> 同时共享系统声音
         </label>
-        <label class="field">画质
-          <select id="quality-select">
-            <option value="smooth" selected>流畅（60fps·运动优先）</option>
-            <option value="auto">自动</option>
-            <option value="high">清晰（1080p·分辨率优先）</option>
-            <option value="medium">中（720p）</option>
-            <option value="low">低（576p·省流量）</option>
-          </select>
-        </label>
+        <div class="row">
+          <label class="field">画质
+            <select id="resolution-select">
+              <option value="1080">1080p（清晰）</option>
+              <option value="720" selected>720p（推荐）</option>
+              <option value="360">360p（省流量）</option>
+            </select>
+          </label>
+          <label class="field">帧率
+            <select id="fps-select">
+              <option value="60">60fps（流畅）</option>
+              <option value="30" selected>30fps（推荐）</option>
+              <option value="15">15fps（省流量）</option>
+            </select>
+          </label>
+        </div>
         <label class="field">自定义房间号（可选，2-8 位字母/数字）
           <input id="custom-room" placeholder="例如 MYROOM 或 8888" maxlength="8"
                  spellcheck="false" autocomplete="off" aria-label="自定义房间号" />
@@ -91,6 +102,11 @@
         <div id="viewer-status" class="viewer-status">已加入房间，等待画面…</div>
         <button id="unmute-btn" class="unmute-btn" hidden>🔊 开启声音</button>
         <div class="controls">
+          <select id="quality-select-viewer" class="ctrl-select" title="清晰度" aria-label="清晰度">
+            <option value="1080" selected>1080p</option>
+            <option value="720">720p</option>
+            <option value="360">360p</option>
+          </select>
           <button id="mute-btn" class="ctrl-btn" title="静音 / 取消静音">🔊</button>
           <input id="volume-range" class="volume" type="range" min="0" max="1" step="0.01" value="1" title="音量" aria-label="音量" />
           <button id="fit-btn" class="ctrl-btn" title="画面模式：占满 / 适应">占满</button>

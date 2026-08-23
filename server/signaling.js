@@ -30,6 +30,7 @@ function payloadOf(msg) {
   const out = {};
   if (msg.sdp) out.sdp = msg.sdp;
   if (msg.candidate) out.candidate = msg.candidate;
+  if (msg.quality) out.quality = msg.quality;
   return out;
 }
 
@@ -122,6 +123,7 @@ export class SignalingServer {
       case "answer":
       case "ice":
       case "renegotiate":
+      case "set-quality":
         return this.relay(peer, msg);
       case "leave":
         return this.removePeer(peer, "left");
