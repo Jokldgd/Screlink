@@ -5,6 +5,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +53,38 @@ check(html.includes('<video id="remote-video"'), "观看端有 remote-video");
 check(html.includes('<video id="preview-video"'), "主机端有 preview-video");
 check(html.includes('type="checkbox" id="audio-checkbox"'), "含系统声音开关");
 check(html.includes('id="quality-select"'), "含画质下拉");
+
+// 7) 运行时加载校验：用 vm + DOM 桩执行 app.js 顶层代码，
+//    抓 TDZ（声明前引用）、语法外的初始化错误等 node --check 发现不了的加载期崩溃
+function elStub() {
+  return new Proxy(function () {}, {
+    get(_t, p) {
+      return (..._a) => elStub();
+    },
+    set() { return true; },
+    has() { return true; },
+  });
+}
+const sandbox = {
+  console,
+  setTimeout, clearTimeout, setInterval, clearInterval,
+  document: elStub(),
+  window: elStub(),
+  navigator: {},
+  location: { protocol: "http:", hostname: "localhost", host: "localhost:8787", origin: "http://localhost:8787", pathname: "/", hash: "", href: "http://localhost:8787/", search: "" },
+  fetch: () => Promise.reject(new Error("no network")),
+  WebSocket: class {}, RTCPeerConnection: class {}, MediaStream: class {},
+  RTCRtpSender: { getCapabilities: () => ({ codecs: [] }) },
+};
+let loadErr = null;
+try {
+  vm.runInNewContext(js, sandbox, { filename: "app.js" });
+  // 等微任务跑完 async IIFE（loadConfig/bindEvents）
+  await new Promise((r) => setTimeout(r, 60));
+} catch (err) {
+  loadErr = err;
+}
+check(loadErr === null, "app.js 运行时加载无异常" + (loadErr ? `；错误：${loadErr.message}` : ""));
 
 console.log(failed === 0 ? "\n  前端静态校验全部通过" : `\n  ${failed} 项校验失败`);
 process.exit(failed === 0 ? 0 : 1);

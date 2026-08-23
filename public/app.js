@@ -20,7 +20,7 @@ const state = {
   hostPc: null,        // viewer 侧：与主机的一条连接
   hostPeerId: null,
   includeAudio: false,
-  quality: QUALITY.auto, // 当前推流画质档位
+  quality: null,       // 当前推流画质档位（startSharing 时设置）
   reconnectTimer: null,  // viewer 重连定时器
   reconnectInProgress: false,
 };

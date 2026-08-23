@@ -2,6 +2,13 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer），格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.5.1] - 2026-08-22
+
+### 修复
+
+- **修复页面加载即崩溃（点击标签无反应）**：`state` 初始化时引用了其后才声明的 `const QUALITY`，导致 TDZ 的 `ReferenceError`，整个前端 JS 失效。改为在启动共享时才设置画质档位
+- 前端测试新增**运行时加载校验**（vm + DOM 桩执行 app.js 顶层），可捕获 `node --check` 发现不了的 TDZ/初始化错误
+
 ## [0.5.0] - 2026-08-22
 
 ### 新增
