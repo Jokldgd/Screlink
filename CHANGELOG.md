@@ -2,6 +2,18 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer），格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.5.0] - 2026-08-22
+
+### 新增
+
+- **推流画质档位**：主机侧新增「自动 / 高 / 中 / 低」选择，通过帧率约束与 `RTCRtpSender.setParameters` 码率上限控制推流质量与流量
+- **观看端断线自动重连**：连接 `failed`/`disconnected` 时，观看者向主机发送 `renegotiate`，主机重建 PeerConnection 并重新协商；`disconnected` 带 2.5s 防抖避免瞬时抖动反复重连
+
+### 变更
+
+- 信令协议新增 `renegotiate` 消息（观看者 → 主机），详见 docs/PROTOCOL.md
+- 主机侧抽取 `setupViewerPc`/`applyMaxBitrate`，新加入与重连复用同一建立流程
+
 ## [0.4.0] - 2026-08-22
 
 ### 新增

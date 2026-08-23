@@ -41,6 +41,14 @@
         <label class="checkbox">
           <input type="checkbox" id="audio-checkbox" /> 同时共享系统声音
         </label>
+        <label class="field">画质
+          <select id="quality-select">
+            <option value="auto" selected>自动</option>
+            <option value="high">高（1080p·30fps）</option>
+            <option value="medium">中（720p·24fps）</option>
+            <option value="low">低（576p·15fps，省流量）</option>
+          </select>
+        </label>
         <button id="share-btn" class="primary big">开始共享屏幕</button>
         <p class="hint">建议使用 Chrome / Edge。首次共享需要授权屏幕捕获。</p>
       </div>

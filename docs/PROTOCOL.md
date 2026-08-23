@@ -37,6 +37,14 @@ WebSocket 端点：`/ws`。所有消息均为 UTF-8 编码的 JSON 文本，格�
 { "type": "ice", "to": "<peerId>", "candidate": { "candidate": "...", "sdpMid": "...", "sdpMLineIndex": 0 } }
 ```
 
+### renegotiate
+
+观看者在连接中断（`failed`/`disconnected`）时请求主机重新协商。由观看者发送，服务器转发给本房间主机；主机收到后重建与该观看者的 PeerConnection 并重新发起 `offer`。
+
+```json
+{ "type": "renegotiate" }
+```
+
 ### leave
 
 主动离开房间（服务器也会在连接断开时自动清理）。

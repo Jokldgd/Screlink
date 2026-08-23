@@ -20,6 +20,9 @@ const state = {
   hostPc: null,        // viewer 侧：与主机的一条连接
   hostPeerId: null,
   includeAudio: false,
+  quality: QUALITY.auto, // 当前推流画质档位
+  reconnectTimer: null,  // viewer 重连定时器
+  reconnectInProgress: false,
 };
 
 let appConfig = {
@@ -29,6 +32,14 @@ let appConfig = {
   maxViewersPerRoom: 8,
   lanHttpUrls: [],
   lanHttpsUrls: [],
+};
+
+/* 推流画质档位：帧率上限 + 码率上限（经 sender.setParameters 下发） */
+const QUALITY = {
+  auto: { label: "自动", frameRate: { ideal: 30, max: 60 }, maxBitrate: 4_000_000 },
+  high: { label: "高", frameRate: { ideal: 30, max: 60 }, maxBitrate: 6_000_000 },
+  medium: { label: "中", frameRate: { ideal: 24, max: 30 }, maxBitrate: 3_000_000 },
+  low: { label: "低", frameRate: { ideal: 15, max: 20 }, maxBitrate: 1_500_000 },
 };
 
 const ERR_TEXT = {
@@ -132,6 +143,7 @@ function handleSignal(msg) {
     case "answer": return onAnswer(msg);
     case "ice": return onIce(msg);
     case "host-left": return onHostLeft(msg);
+    case "renegotiate": return onRenegotiate(msg);
     default: console.warn("unknown signal", msg);
   }
 }
@@ -205,11 +217,13 @@ async function startSharing() {
     return;
   }
   state.includeAudio = $("audio-checkbox").checked;
+  const quality = QUALITY[$("quality-select").value] || QUALITY.auto;
+  state.quality = quality;
   setBusy($("share-btn"), true, "请在弹窗中选择屏幕…");
   let stream;
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: 30, max: 60 } },
+      video: { frameRate: quality.frameRate },
       audio: state.includeAudio ? { echoCancellation: false, noiseSuppression: false } : false,
     });
   } catch (err) {
@@ -220,6 +234,10 @@ async function startSharing() {
   setBusy($("share-btn"), false);
 
   state.localStream = stream;
+  // 应用帧率上限
+  for (const track of stream.getVideoTracks()) {
+    track.applyConstraints({ frameRate: quality.frameRate }).catch(() => {});
+  }
   $("preview-video").srcObject = stream;
 
   // 用户通过浏览器工具条手动结束共享
@@ -248,12 +266,20 @@ function onViewerJoined(msg) {
   updateViewerCount(msg.viewerCount);
   const peerId = msg.peerId;
   if (state.viewerPcs.has(peerId)) return;
+  setupViewerPc(peerId);
+}
 
+/** 为某个观看者建立/重建一条连接并发送 offer（用于新加入或重连） */
+function setupViewerPc(peerId) {
+  const old = state.viewerPcs.get(peerId);
+  if (old) {
+    try { old.close(); } catch { /* ignore */ }
+  }
   const pc = createPc(`viewer:${peerId}`);
   pc.peerTarget = peerId;
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
-      toast("与某位观看者的连接不稳定");
+      dbg("host: viewer pc unstable", peerId, pc.connectionState);
     }
   };
   state.viewerPcs.set(peerId, pc);
@@ -264,8 +290,35 @@ function onViewerJoined(msg) {
   dbg("host: send offer to viewer", peerId);
   pc.createOffer()
     .then((offer) => pc.setLocalDescription(offer))
+    .then(() => applyMaxBitrate(pc))
     .then(() => send({ type: "offer", to: peerId, sdp: pc.localDescription }))
     .catch((err) => console.error("createOffer failed", err));
+}
+
+/** 按当前画质档位设置视频发送码率上限 */
+function applyMaxBitrate(pc) {
+  if (!state.quality) return;
+  for (const sender of pc.getSenders()) {
+    if (sender.track?.kind !== "video") continue;
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+      params.encodings[0].maxBitrate = state.quality.maxBitrate;
+      sender.setParameters(params).catch(() => {});
+      dbg("host: set maxBitrate", state.quality.maxBitrate);
+    } catch (err) {
+      console.warn("setParameters failed", err);
+    }
+  }
+}
+
+/** 观看者请求重连：主机重建该观看者连接并重新协商 */
+function onRenegotiate(msg) {
+  if (state.role !== "host") return;
+  const peerId = msg.from;
+  if (!state.viewerPcs.has(peerId)) return;
+  dbg("host: renegotiate ->", peerId);
+  setupViewerPc(peerId);
 }
 
 function onViewerLeft(msg) {
@@ -402,18 +455,21 @@ function onOffer(msg) {
 
   let pc = state.hostPc;
   if (!pc || pc.signalingState === "closed") {
+    clearReconnectState();
     pc = createPc("host");
     pc.peerTarget = msg.from;
     pc.onconnectionstatechange = () => {
       dbg("viewer: pc state ->", pc.connectionState);
       const video = $("remote-video");
       if (pc.connectionState === "connected") {
+        clearReconnectState();
         if (!video.srcObject) $("viewer-status").textContent = "已连接，等待画面…";
-        // 有画面时状态由 ontrack / onloadeddata 更新
       } else if (pc.connectionState === "failed") {
-        $("viewer-status").textContent = "连接失败（可能被防火墙拦截）";
+        $("viewer-status").textContent = "连接中断，正在重连…";
+        requestRenegotiate();
       } else if (pc.connectionState === "disconnected") {
         $("viewer-status").textContent = "连接中断，等待重连…";
+        scheduleRenegotiate(pc);
       } else {
         $("viewer-status").textContent = "正在连接…";
       }
@@ -463,6 +519,30 @@ function onIce(msg) {
     state.viewerPcs.get(msg.from) ||
     (msg.from === state.hostPeerId ? state.hostPc : null);
   if (pc) pc.queueIce(msg.candidate);
+}
+
+/* 观看者自动重连：连接中断时请求主机重新协商 */
+function clearReconnectState() {
+  if (state.reconnectTimer) { clearTimeout(state.reconnectTimer); state.reconnectTimer = null; }
+  state.reconnectInProgress = false;
+}
+
+function requestRenegotiate() {
+  if (state.role !== "viewer" || state.reconnectInProgress) return;
+  state.reconnectInProgress = true;
+  dbg("viewer: request renegotiate");
+  send({ type: "renegotiate" });
+  state.reconnectTimer = setTimeout(() => { state.reconnectInProgress = false; }, 6000);
+}
+
+function scheduleRenegotiate(pc) {
+  // disconnected 可能是瞬时抖动，稍作延迟再真正请求重连
+  if (state.reconnectTimer) return;
+  state.reconnectTimer = setTimeout(() => {
+    if (state.role === "viewer" && pc && pc.connectionState !== "connected") {
+      requestRenegotiate();
+    }
+  }, 2500);
 }
 
 function onHostLeft(msg) {

@@ -121,6 +121,7 @@ export class SignalingServer {
       case "offer":
       case "answer":
       case "ice":
+      case "renegotiate":
         return this.relay(peer, msg);
       case "leave":
         return this.removePeer(peer, "left");
