@@ -82,12 +82,13 @@
     <!-- 观看者视图 -->
     <section id="viewer-view" class="panel" hidden>
       <div class="player" id="player">
-        <video id="remote-video" autoplay playsinline></video>
+        <video id="remote-video" autoplay playsinline data-fit="cover"></video>
         <div id="viewer-status" class="viewer-status">已加入房间，等待画面…</div>
         <button id="unmute-btn" class="unmute-btn" hidden>🔊 开启声音</button>
         <div class="controls">
           <button id="mute-btn" class="ctrl-btn" title="静音 / 取消静音">🔊</button>
           <input id="volume-range" class="volume" type="range" min="0" max="1" step="0.01" value="1" title="音量" aria-label="音量" />
+          <button id="fit-btn" class="ctrl-btn" title="画面模式：占满 / 适应">占满</button>
           <button id="fs-btn" class="ctrl-btn" title="全屏">⛶ 全屏</button>
         </div>
       </div>

@@ -227,7 +227,9 @@ button.big { width: 100%; padding: 14px; font-size: 16px; }
   display: block;
   object-fit: contain;
 }
-/* 全屏：视频铺满整个视口，object-fit:contain 保持比例、不裁剪不变形（屏幕共享需看全内容） */
+#remote-video[data-fit="cover"] { object-fit: cover; }   /* 占满：裁切铺满，无黑边 */
+#remote-video[data-fit="contain"] { object-fit: contain; }/* 适应：显示全部，可能有黑边 */
+/* 全屏：视频铺满整个视口，object-fit 由 data-fit 决定（占满/适应） */
 .player:fullscreen,
 .player:-webkit-full-screen,
 .player:-moz-full-screen,
@@ -242,7 +244,6 @@ button.big { width: 100%; padding: 14px; font-size: 16px; }
   height: 100vh;
   max-height: none;
   max-width: none;
-  object-fit: contain;
   border-radius: 0;
   border: 0;
 }

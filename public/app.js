@@ -21,6 +21,7 @@ const state = {
   hostPeerId: null,
   includeAudio: false,
   quality: null,       // 当前推流画质档位（startSharing 时设置）
+  fit: "cover",        // 观看端画面模式：cover=占满 / contain=适应
   reconnectTimer: null,  // viewer 重连定时器
   reconnectInProgress: false,
 };
@@ -594,6 +595,18 @@ function updateAudioUI() {
   $("volume-range").value = String(v.volume);
 }
 
+/* 画面模式：cover=占满（裁切铺满，无黑边）/ contain=适应（看全内容） */
+function applyFit() {
+  const v = $("remote-video");
+  if (!v) return;
+  v.dataset.fit = state.fit;
+  $("fit-btn").textContent = state.fit === "cover" ? "占满" : "适应";
+}
+function toggleFit() {
+  state.fit = state.fit === "cover" ? "contain" : "cover";
+  applyFit();
+}
+
 function toggleFullscreen() {
   const el = $("player");
   const doc = document;
@@ -666,6 +679,9 @@ function bindEvents() {
   document.addEventListener("fullscreenchange", updateFullscreenUI);
   document.addEventListener("webkitfullscreenchange", updateFullscreenUI);
   document.addEventListener("msfullscreenchange", updateFullscreenUI);
+
+  $("fit-btn").addEventListener("click", toggleFit);
+  applyFit(); // 应用初始画面模式（占满）
 
   // 诊断工具：在观看页 F12 控制台运行 __screlinkDebug() 查看连接与视频状态
   window.__screlinkDebug = () => {
