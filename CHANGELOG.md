@@ -2,6 +2,17 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer），格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.6.1] - 2026-08-22
+
+### 变更
+
+- 画质档位明确区分「流畅（60fps·运动优先）」与「清晰（1080p·分辨率优先）」：
+  - 流畅：带宽不足时 `maintain-framerate` 保帧率（可能降分辨率）
+  - 清晰：带宽不足时 `maintain-resolution` 保分辨率（可能降帧率）
+  - 自动/中/低：`balanced`
+- 调整码率更贴合家庭宽带上行（流畅 10Mbps、自动/清晰 6Mbps、中 3Mbps、低 2Mbps）
+- 说明：跨公网 + 家庭宽带上行有限时，选「清晰」通常比选「流畅」观感更好（避免分辨率被砍到 640×360）
+
 ## [0.6.0] - 2026-08-22
 
 ### 新增

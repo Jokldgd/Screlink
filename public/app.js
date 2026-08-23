@@ -34,14 +34,18 @@ let appConfig = {
   lanHttpsUrls: [],
 };
 
-/* 推流画质档位：帧率上限 + 码率上限（经 sender.setParameters 下发）
-   contentHint: "motion" 偏向流畅（60fps 运动保留），"detail" 偏向锐利（静态文字更清晰） */
+/* 推流画质档位：帧率上限 + 码率上限 + 降级策略
+   contentHint:  "motion"=流畅优先 / "detail"=锐利优先
+   degradation:  带宽不足时如何取舍
+     maintain-framerate  保帧率（可能降分辨率）——适合播放视频/动态内容
+     maintain-resolution 保分辨率（可能降帧率）——适合静态屏幕/文字，清晰可读
+     balanced            折中 */
 const QUALITY = {
-  smooth: { label: "流畅", frameRate: { ideal: 60, max: 60 }, maxBitrate: 12_000_000, contentHint: "motion" },
-  auto:   { label: "自动", frameRate: { ideal: 60, max: 60 }, maxBitrate: 8_000_000, contentHint: "detail" },
-  high:   { label: "高", frameRate: { ideal: 30, max: 30 }, maxBitrate: 6_000_000, contentHint: "detail" },
-  medium: { label: "中", frameRate: { ideal: 30, max: 30 }, maxBitrate: 3_000_000, contentHint: "detail" },
-  low:    { label: "低", frameRate: { ideal: 24, max: 24 }, maxBitrate: 2_000_000, contentHint: "detail" },
+  smooth: { label: "流畅", frameRate: { ideal: 60, max: 60 }, maxBitrate: 10_000_000, contentHint: "motion", degradation: "maintain-framerate" },
+  auto:   { label: "自动", frameRate: { ideal: 60, max: 60 }, maxBitrate: 6_000_000, contentHint: "detail", degradation: "balanced" },
+  high:   { label: "清晰", frameRate: { ideal: 30, max: 30 }, maxBitrate: 6_000_000, contentHint: "detail", degradation: "maintain-resolution" },
+  medium: { label: "中", frameRate: { ideal: 30, max: 30 }, maxBitrate: 3_000_000, contentHint: "detail", degradation: "balanced" },
+  low:    { label: "低", frameRate: { ideal: 24, max: 24 }, maxBitrate: 2_000_000, contentHint: "detail", degradation: "balanced" },
 };
 
 const ERR_TEXT = {
@@ -309,9 +313,8 @@ function applyMaxBitrate(pc) {
       const params = sender.getParameters();
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
       params.encodings[0].maxBitrate = state.quality.maxBitrate;
-      // 流畅档：带宽不足时优先保帧率（维持 60fps），而不是保分辨率
-      params.degradationPreference =
-        state.quality.contentHint === "motion" ? "maintain-framerate" : "balanced";
+      // 按档位设定降级策略：流畅保帧率 / 清晰保分辨率 / 其余折中
+      params.degradationPreference = state.quality.degradation || "balanced";
       sender.setParameters(params).catch(() => {});
       dbg("host: set maxBitrate", state.quality.maxBitrate, "degradation:", params.degradationPreference);
     } catch (err) {
