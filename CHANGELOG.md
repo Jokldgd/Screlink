@@ -2,6 +2,12 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer），格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.6.2] - 2026-08-22
+
+### 修复
+
+- **全屏铺满**：观看端全屏时视频 `width:100vw / height:100vh`，`object-fit:contain` 保持比例、不裁剪不变形（此前受 `max-height:70vh` 限制，画面有黑边、铺不满）；含 WebKit/Moz/MS 全屏前缀兼容
+
 ## [0.6.1] - 2026-08-22
 
 ### 变更

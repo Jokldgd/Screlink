@@ -227,6 +227,25 @@ button.big { width: 100%; padding: 14px; font-size: 16px; }
   display: block;
   object-fit: contain;
 }
+/* 全屏：视频铺满整个视口，object-fit:contain 保持比例、不裁剪不变形（屏幕共享需看全内容） */
+.player:fullscreen,
+.player:-webkit-full-screen,
+.player:-moz-full-screen,
+.player:-ms-fullscreen {
+  background: #000;
+}
+.player:fullscreen #remote-video,
+.player:-webkit-full-screen #remote-video,
+.player:-moz-full-screen #remote-video,
+.player:-ms-fullscreen #remote-video {
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  max-width: none;
+  object-fit: contain;
+  border-radius: 0;
+  border: 0;
+}
 .unmute-btn {
   position: absolute;
   top: 12px;
