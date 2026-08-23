@@ -381,9 +381,10 @@ const BITRATE_STEPS = [
   6_000_000, 8_000_000, 10_000_000, 12_000_000, 16_000_000,
 ];
 const ADAPT_INTERVAL_MS = 1500; // 每 1.5s 采样一次（更快适应）
-const LOSS_DOWN = 0.12;         // 丢包率 > 12%：才降档（更迟降，保住画质）
+const LOSS_DOWN = 0.10;         // 丢包率 > 10%：才降档（比 12% 稍灵敏，避免长时间满码率拥塞）
 const LOSS_UP = 0.015;          // 丢包率 < 1.5%：视为平稳
-const UP_AFTER = 3;             // 连续 3 次平稳（约 6s）后回升一档
+const UP_AFTER = 3;             // 连续 3 次平稳（约 4.5s）后回升一档
+const COOLDOWN_AFTER_DOWN = 6;  // 降档后冷却 6 个采样（约 9s）内不再回升，防止锯齿回弹造成“越到后面越卡”
 
 function stepDownBitrate(cur) {
   for (let i = BITRATE_STEPS.length - 1; i >= 0; i--) {
@@ -402,7 +403,7 @@ function stepUpBitrate(cur, max) {
 function startBitrateAdaptation(pc) {
   stopBitrateAdaptation(pc);
   const initial = pc._bitrate || state.quality?.maxBitrate || 6_000_000;
-  const adapt = { initial, prev: null, stableCount: 0 };
+  const adapt = { initial, prev: null, stableCount: 0, cooldown: 0 };
   pc._adapt = adapt;
   pc._adaptTimer = setInterval(() => {
     if (!state.role || pc.connectionState !== "connected") return;
@@ -418,12 +419,14 @@ function startBitrateAdaptation(pc) {
           const sDelta = cur.packetsSent - adapt.prev.s;
           const lDelta = cur.packetsLost - adapt.prev.l;
           const loss = sDelta + lDelta > 0 ? lDelta / (sDelta + lDelta) : 0;
+          if (adapt.cooldown > 0) adapt.cooldown--;
           let target = null;
           if (loss > LOSS_DOWN) {
             target = stepDownBitrate(pc._bitrate ?? initial);
             adapt.stableCount = 0;
-            dbg(`adapt: loss ${(loss * 100).toFixed(1)}% -> down ${target}`);
-          } else if (loss < LOSS_UP) {
+            adapt.cooldown = COOLDOWN_AFTER_DOWN;
+            dbg(`adapt: loss ${(loss * 100).toFixed(1)}% -> down ${target} (cool ${adapt.cooldown})`);
+          } else if (loss < LOSS_UP && adapt.cooldown <= 0) {
             adapt.stableCount++;
             if (adapt.stableCount >= UP_AFTER) {
               adapt.stableCount = 0;
