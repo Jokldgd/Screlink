@@ -27,6 +27,7 @@
     "websocket"
   ],
   "dependencies": {
+    "livekit-server-sdk": "^2.18.0",
     "selfsigned": "^2.4.1",
     "ws": "^8.18.0"
   }

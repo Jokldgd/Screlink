@@ -127,5 +127,11 @@
   </footer>
 
   <script src="app.js"></script>
+  <!-- SFU(LiveKit) 客户端 SDK：配置启用后由 app.js 使用；加载失败则回退 mesh -->
+  <script type="module">
+    import * as LK from "https://cdn.jsdelivr.net/npm/livekit-client@2/+esm";
+    window.LiveKitClient = LK;
+    console.debug("[screlink] LiveKitClient loaded");
+  </script>
 </body>
 </html>

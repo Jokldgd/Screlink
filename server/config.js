@@ -53,6 +53,19 @@ export const config = {
   turnUser: process.env.SCRELINK_TURN_USER || "",
   turnPass: process.env.SCRELINK_TURN_PASS || "",
 
+  /**
+   * SFU（LiveKit）配置：配置了 apiKey+secret 即启用 SFU 模式（见 docs/SFU.md）。
+   *  LIVEKIT_URL           LiveKit WebSocket 地址（如 ws://<host>:7880）
+   *  LIVEKIT_API_KEY       LiveKit 密钥 key
+   *  LIVEKIT_API_SECRET    LiveKit 密钥 secret
+   */
+  livekit: {
+    url: process.env.LIVEKIT_URL || "",
+    apiKey: process.env.LIVEKIT_API_KEY || "",
+    apiSecret: process.env.LIVEKIT_API_SECRET || "",
+  },
+  sfuEnabled: Boolean(process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET),
+
   /** 自签名证书有效期（天），仅 HTTPS 模式使用 */
   certDays: Number(process.env.SCRELINK_CERT_DAYS || 365),
 };

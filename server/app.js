@@ -2,7 +2,7 @@ import http from "node:http";
 import https from "node:https";
 import os from "node:os";
 import { config } from "./config.js";
-import { SignalingServer } from "./signaling.js";
+import { SignalingServer, normalizeRoomCode } from "./signaling.js";
 import { createStaticHandler } from "./static.js";
 import { loadTlsOptions } from "./https.js";
 
@@ -25,7 +25,7 @@ export function createApp(options = {}) {
   const signaling = new SignalingServer();
   const staticHandler = createStaticHandler();
 
-  const handleRequest = (req, res) => {
+  const handleRequest = async (req, res) => {
     const url = new URL(req.url, "http://localhost");
 
     if (url.pathname === "/api/health") {
@@ -62,9 +62,49 @@ export function createApp(options = {}) {
         httpsPort: httpsPort ?? null,
         lanHttpUrls: ips.map((ip) => `http://${ip}:${httpPort}`),
         lanHttpsUrls: httpsPort ? ips.map((ip) => `https://${ip}:${httpsPort}`) : [],
+        sfu: { enabled: config.sfuEnabled, livekitUrl: config.livekit.url },
       };
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
       res.end(JSON.stringify(body));
+      return;
+    }
+
+    // SFU（LiveKit）token 签发：host 发布 / viewer 订阅
+    if (url.pathname === "/api/livekit/token") {
+      const room = normalizeRoomCode(url.searchParams.get("room") || "");
+      const role = url.searchParams.get("role") === "publisher" ? "publisher" : "subscriber";
+      if (!config.sfuEnabled) {
+        res.writeHead(501, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "sfu-not-configured", message: "服务器未配置 LiveKit（SCRELINK/LIVEKIT_API_KEY/SECRET）" }));
+        return;
+      }
+      if (!room || room.length < 2 || room.length > 8) {
+        res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "bad-room" }));
+        return;
+      }
+      try {
+        // 动态导入，避免未配置 LiveKit 时影响启动/测试
+        const { AccessToken } = await import("livekit-server-sdk");
+        const identity = role === "publisher" ? `host-${room}` : `viewer-${room}-${Math.random().toString(36).slice(2, 8)}`;
+        const token = new AccessToken(config.livekit.apiKey, config.livekit.apiSecret, {
+          identity,
+          name: role === "publisher" ? "主机" : "观看者",
+        });
+        token.addGrant({
+          room: `room-${room}`,
+          roomJoin: true,
+          canPublish: role === "publisher",
+          canSubscribe: true,
+          canPublishData: role === "publisher",
+        });
+        const jwt = await token.toJwt();
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+        res.end(JSON.stringify({ url: config.livekit.url, token: jwt, room: `room-${room}`, role }));
+      } catch (err) {
+        res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "token-error", message: String(err?.message || err) }));
+      }
       return;
     }
 

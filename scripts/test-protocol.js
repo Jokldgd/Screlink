@@ -66,7 +66,13 @@ const main = async () => {
   const cfg = await fetch(`${base}/api/config`).then((r) => r.json());
   assert.ok(Array.isArray(cfg.iceServers) && cfg.iceServers.length > 0);
   assert.equal(cfg.iceServers[0].urls[0], "stun:stun.l.google.com:19302");
-  ok("config iceServers has STUN");
+  assert.ok(cfg.sfu && typeof cfg.sfu.enabled === "boolean", "config 含 sfu 字段");
+  ok("config iceServers has STUN + sfu field");
+
+  // SFU token 接口（默认未配置 LiveKit 时应返回 501）
+  const tok = await fetch(`${base}/api/livekit/token?room=ABC-123&role=publisher`).then((r) => r.json());
+  assert.equal(tok.error, "sfu-not-configured");
+  ok("livekit/token returns sfu-not-configured when not enabled");
 
   const index = await fetch(`${base}/`).then((r) => r.text());
   assert.ok(index.includes("Screlink"));

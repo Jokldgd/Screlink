@@ -237,10 +237,101 @@ function pinVideoCodecs(pc) {
   }
 }
 
+/* ---------------- SFU (LiveKit) 模式 ----------------
+ * 配置了 LiveKit（appConfig.sfu.enabled）且 CDN 加载成功(window.LiveKitClient)时启用。
+ * 媒体改经 LiveKit SFU 转发（主机一路推、SFU 扇出、观看者订阅），mesh 保留为 fallback。
+ * 注：此路径为实验性，需真实浏览器验收（见 docs/SFU.md）。 */
+function sfuActive() {
+  return !!(appConfig.sfu && appConfig.sfu.enabled && window.LiveKitClient);
+}
+async function requestLiveKitToken(room, role) {
+  const res = await fetch(`/api/livekit/token?room=${encodeURIComponent(room)}&role=${role}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.token) {
+    toast(data.message || "获取 LiveKit 凭证失败");
+    throw new Error("token-failed");
+  }
+  return data;
+}
+async function startSharingSfu() {
+  if (state.role) return;
+  if (!navigator.mediaDevices?.getDisplayMedia) { toast("当前浏览器不支持屏幕捕获"); return; }
+  state.includeAudio = $("audio-checkbox").checked;
+  const quality = buildQuality();
+  state.quality = quality;
+  setBusy($("share-btn"), true, "请在弹窗中选择屏幕…");
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: quality.frameRate },
+      audio: state.includeAudio ? { echoCancellation: false, noiseSuppression: false } : false,
+    });
+  } catch (err) {
+    setBusy($("share-btn"), false);
+    toast(err.name === "NotAllowedError" ? "已取消" : `无法获取屏幕：${err.message}`);
+    return;
+  }
+  setBusy($("share-btn"), false);
+  state.localStream = stream;
+  $("preview-video").srcObject = stream;
+  for (const t of stream.getVideoTracks()) t.applyConstraints({ frameRate: quality.frameRate }).catch(() => {});
+  // 先经信令建房拿到房间号，再等待 onCreated 触发 doSfuPublish
+  await new Promise((resolve) => connectSocket(() => { send({ type: "create" }); resolve(); }));
+  state.sfuPendingPublish = true;
+}
+async function doSfuPublish() {
+  const LK = window.LiveKitClient;
+  const room = new LK.Room({ adaptiveStream: true, dynacast: true });
+  state.sfuRoom = room;
+  try {
+    const tokenData = await requestLiveKitToken(state.room, "publisher");
+    await room.connect(tokenData.url, tokenData.token);
+    const video = state.localStream.getVideoTracks()[0];
+    if (video) await room.localParticipant.publishTrack(video, { source: LK.Track.Source.ScreenShare, simulcast: true });
+    for (const a of state.localStream.getAudioTracks()) await room.localParticipant.publishTrack(a, { source: LK.Track.Source.Microphone });
+    dbg("SFU: published to", tokenData.room);
+    toast(state.includeAudio ? "已共享（SFU）" : "已共享（SFU，无声）");
+  } catch (err) {
+    console.error("SFU publish failed", err);
+    toast("SFU 推流失败：" + (err?.message || err));
+  }
+}
+async function joinRoomSfu() {
+  if (state.role) return;
+  const code = $("room-input").value.trim();
+  if (!code) return toast("请输入房间号");
+  setBusy($("join-btn"), true, "加入中…");
+  await new Promise((resolve) => connectSocket(() => { send({ type: "join", room: code }); resolve(); }));
+  state.sfuPendingSubscribe = true; // onJoined 触发 doSfuSubscribe
+  setBusy($("join-btn"), false, "");
+}
+async function doSfuSubscribe() {
+  const LK = window.LiveKitClient;
+  const room = new LK.Room({ adaptiveStream: true, dynacast: true });
+  state.sfuRoom = room;
+  room.on(LK.RoomEvent.TrackSubscribed, (track, pub) => {
+    if (pub.source === LK.Track.Source.ScreenShare) {
+      track.attach($("remote-video"));
+      $("viewer-status").textContent = "正在播放（SFU）";
+    }
+  });
+  room.on(LK.RoomEvent.TrackUnsubscribed, (track) => { try { track.detach(); } catch { /* ignore */ } });
+  room.on(LK.RoomEvent.Disconnected, () => { $("viewer-status").textContent = "已断开"; });
+  try {
+    const tokenData = await requestLiveKitToken(state.room, "subscriber");
+    await room.connect(tokenData.url, tokenData.token);
+    $("viewer-status").textContent = "已加入（SFU）";
+  } catch (err) {
+    console.error("SFU subscribe failed", err);
+    toast("SFU 加入失败：" + (err?.message || err));
+  }
+}
+
 /* ---------------- 主机逻辑 ---------------- */
 
 async function startSharing() {
   if (state.role) return;
+  if (sfuActive()) return startSharingSfu();
   if (!navigator.mediaDevices?.getDisplayMedia) {
     // 区分根因：非安全上下文（HTTP/IP 访问）与浏览器真的不支持
     if (!window.isSecureContext) {
@@ -299,11 +390,17 @@ function onCreated(msg) {
   updateViewerCount(0);
   updateShareLinks();
   showView("host-view");
-  toast("共享已开始，把房间号发给观看者吧");
+  if (state.sfuPendingPublish) {
+    state.sfuPendingPublish = false;
+    doSfuPublish(); // SFU：拿到房间号后发布到 LiveKit
+  } else {
+    toast("共享已开始，把房间号发给观看者吧");
+  }
 }
 
 function onViewerJoined(msg) {
   if (state.role !== "host") return;
+  if (sfuActive()) return; // SFU 模式：媒体由 LiveKit 分发，无需为观看者建 mesh 连接
   updateViewerCount(msg.viewerCount);
   const peerId = msg.peerId;
   if (state.viewerPcs.has(peerId)) return;
@@ -658,6 +755,7 @@ function resetHost(reason) {
 
 function joinRoom() {
   if (state.role) return;
+  if (sfuActive()) return joinRoomSfu();
   const code = $("room-input").value.trim();
   if (!code) return toast("请输入房间号");
   setBusy($("join-btn"), true, "加入中…");
@@ -674,6 +772,10 @@ function onJoined(msg) {
   $("viewer-room").textContent = msg.room;
   $("viewer-status").textContent = "已加入房间，等待画面…";
   showView("viewer-view");
+  if (state.sfuPendingSubscribe) {
+    state.sfuPendingSubscribe = false;
+    doSfuSubscribe(); // SFU：加入后订阅 LiveKit 流
+  }
 }
 
 function onOffer(msg) {
