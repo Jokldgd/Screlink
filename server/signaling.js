@@ -115,7 +115,7 @@ export class SignalingServer {
     }
     switch (msg.type) {
       case "create":
-        return this.handleCreate(peer);
+        return this.handleCreate(peer, msg);
       case "join":
         return this.handleJoin(peer, msg);
       case "offer":
@@ -130,12 +130,24 @@ export class SignalingServer {
     }
   }
 
-  handleCreate(peer) {
+  handleCreate(peer, msg) {
     if (peer.role) return this.sendError(peer, "already-in-room");
     let code;
-    do {
-      code = randomCode(config.roomCodeLength);
-    } while (this.rooms.has(code));
+    // 支持自定义房间号：msg.room 可选，2-8 位字母/数字（自动转大写、去非法字符）
+    const custom = normalizeRoomCode(msg.room);
+    if (custom) {
+      if (custom.length < 2 || custom.length > 8) {
+        return this.sendError(peer, "bad-room");
+      }
+      if (this.rooms.has(custom)) {
+        return this.sendError(peer, "room-taken");
+      }
+      code = custom;
+    } else {
+      do {
+        code = randomCode(config.roomCodeLength);
+      } while (this.rooms.has(code));
+    }
     const room = { code, host: peer, viewers: new Map(), createdAt: Date.now() };
     this.rooms.set(code, room);
     peer.role = "host";

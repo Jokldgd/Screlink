@@ -50,6 +50,11 @@
             <option value="low">低（576p·省流量）</option>
           </select>
         </label>
+        <label class="field">自定义房间号（可选，2-8 位字母/数字）
+          <input id="custom-room" placeholder="例如 MYROOM 或 8888" maxlength="8"
+                 spellcheck="false" autocomplete="off" aria-label="自定义房间号" />
+          <span class="hint">不填则自动生成；填写后会被记住，刷新不丢失</span>
+        </label>
         <button id="share-btn" class="primary big">开始共享屏幕</button>
         <p class="hint">建议使用 Chrome / Edge。首次共享需要授权屏幕捕获。</p>
       </div>

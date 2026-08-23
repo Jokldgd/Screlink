@@ -52,6 +52,8 @@ const QUALITY = {
 const ERR_TEXT = {
   "room-not-found": "房间不存在或共享已结束",
   "room-full": "房间人数已满",
+  "room-taken": "该房间号已被使用，请换一个",
+  "bad-room": "房间号需为 2-8 位字母或数字",
   "already-in-room": "你已在房间中",
   "not-in-room": "尚未加入房间",
   "bad-json": "消息格式错误",
@@ -257,7 +259,10 @@ async function startSharing() {
     };
   }
 
-  connectSocket(() => send({ type: "create" }));
+  connectSocket(() => {
+    const custom = $("custom-room")?.value.trim().toUpperCase() || "";
+    send(custom ? { type: "create", room: custom } : { type: "create" });
+  });
 }
 
 function onCreated(msg) {
@@ -283,7 +288,7 @@ function onViewerJoined(msg) {
 function setupViewerPc(peerId) {
   const old = state.viewerPcs.get(peerId);
   if (old) {
-    try { old.close(); } catch { /* ignore */ }
+    try { stopBitrateAdaptation(old); old.close(); } catch { /* ignore */ }
   }
   const pc = createPc(`viewer:${peerId}`);
   pc.peerTarget = peerId;
@@ -301,6 +306,7 @@ function setupViewerPc(peerId) {
   pc.createOffer()
     .then((offer) => pc.setLocalDescription(offer))
     .then(() => applyMaxBitrate(pc))
+    .then(() => startBitrateAdaptation(pc))
     .then(() => send({ type: "offer", to: peerId, sdp: pc.localDescription }))
     .catch((err) => console.error("createOffer failed", err));
 }
@@ -308,19 +314,106 @@ function setupViewerPc(peerId) {
 /** 按当前画质档位设置视频发送码率上限与降级策略 */
 function applyMaxBitrate(pc) {
   if (!state.quality) return;
+  const bps = state.quality.maxBitrate;
+  pc._bitrate = bps;
+  applyBitrate(pc, bps);
+  dbg("host: set maxBitrate", bps, "degradation:", state.quality.degradation);
+}
+
+/** 对某条观看者连接设置视频发送码率上限（自适应时反复调用） */
+function applyBitrate(pc, bps) {
   for (const sender of pc.getSenders()) {
     if (sender.track?.kind !== "video") continue;
     try {
       const params = sender.getParameters();
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
-      params.encodings[0].maxBitrate = state.quality.maxBitrate;
-      // 按档位设定降级策略：流畅保帧率 / 清晰保分辨率 / 其余折中
-      params.degradationPreference = state.quality.degradation || "balanced";
+      params.encodings[0].maxBitrate = bps;
+      if (state.quality?.degradation) params.degradationPreference = state.quality.degradation;
       sender.setParameters(params).catch(() => {});
-      dbg("host: set maxBitrate", state.quality.maxBitrate, "degradation:", params.degradationPreference);
     } catch (err) {
       console.warn("setParameters failed", err);
     }
+  }
+}
+
+/* ---------------- 自适应码率 ----------------
+ * 公网带宽有限且复杂画面码率需求高时，固定码率上限容易卡顿/模糊。
+ * 这里按丢包率动态调整每个观看者连接的码率上限：
+ *   丢包率高  -> 立即降档（先稳画面，避免雪崩）
+ *   持续平稳  -> 缓慢回升（利用空闲带宽，不超档位原始上限）
+ * 每个观看者独立调节，互不影响。 */
+const BITRATE_STEPS = [
+  800_000, 1_000_000, 1_500_000, 2_000_000, 3_000_000,
+  4_000_000, 6_000_000, 8_000_000, 10_000_000, 12_000_000,
+];
+const ADAPT_INTERVAL_MS = 2000; // 每 2s 采样一次
+const LOSS_DOWN = 0.08;         // 丢包率 > 8%：立即降档
+const LOSS_UP = 0.02;           // 丢包率 < 2%：视为平稳
+const UP_AFTER = 3;             // 连续 3 次平稳（约 6s）后回升一档
+
+function stepDownBitrate(cur) {
+  for (let i = BITRATE_STEPS.length - 1; i >= 0; i--) {
+    if (BITRATE_STEPS[i] < cur) return BITRATE_STEPS[i];
+  }
+  return BITRATE_STEPS[0];
+}
+
+function stepUpBitrate(cur, max) {
+  for (let i = 0; i < BITRATE_STEPS.length; i++) {
+    if (BITRATE_STEPS[i] > cur) return Math.min(BITRATE_STEPS[i], max);
+  }
+  return max;
+}
+
+function startBitrateAdaptation(pc) {
+  stopBitrateAdaptation(pc);
+  const initial = pc._bitrate || state.quality?.maxBitrate || 6_000_000;
+  const adapt = { initial, prev: null, stableCount: 0 };
+  pc._adapt = adapt;
+  pc._adaptTimer = setInterval(() => {
+    if (!state.role || pc.connectionState !== "connected") return;
+    pc.getStats()
+      .then((stats) => {
+        let cur = null;
+        stats.forEach((r) => {
+          if (r.type === "outbound-rtp" && (r.kind === "video" || r.mediaType === "video")) cur = r;
+        });
+        if (!cur || cur.packetsSent === undefined || cur.packetsLost === undefined) return;
+        const t = cur.timestamp;
+        if (adapt.prev && t > adapt.prev.t) {
+          const sDelta = cur.packetsSent - adapt.prev.s;
+          const lDelta = cur.packetsLost - adapt.prev.l;
+          const loss = sDelta + lDelta > 0 ? lDelta / (sDelta + lDelta) : 0;
+          let target = null;
+          if (loss > LOSS_DOWN) {
+            target = stepDownBitrate(pc._bitrate ?? initial);
+            adapt.stableCount = 0;
+            dbg(`adapt: loss ${(loss * 100).toFixed(1)}% -> down ${target}`);
+          } else if (loss < LOSS_UP) {
+            adapt.stableCount++;
+            if (adapt.stableCount >= UP_AFTER) {
+              adapt.stableCount = 0;
+              target = stepUpBitrate(pc._bitrate ?? initial, initial);
+              if (target !== pc._bitrate) dbg(`adapt: stable -> up ${target}`);
+            }
+          } else {
+            adapt.stableCount = 0;
+          }
+          if (target !== null && target !== pc._bitrate) {
+            pc._bitrate = target;
+            applyBitrate(pc, target);
+          }
+        }
+        adapt.prev = { s: cur.packetsSent, l: cur.packetsLost, t };
+      })
+      .catch(() => {});
+  }, ADAPT_INTERVAL_MS);
+}
+
+function stopBitrateAdaptation(pc) {
+  if (pc._adaptTimer) {
+    clearInterval(pc._adaptTimer);
+    pc._adaptTimer = null;
   }
 }
 
@@ -337,6 +430,7 @@ function onViewerLeft(msg) {
   if (state.role !== "host") return;
   const pc = state.viewerPcs.get(msg.peerId);
   if (pc) {
+    stopBitrateAdaptation(pc);
     pc.close();
     state.viewerPcs.delete(msg.peerId);
   }
@@ -424,7 +518,10 @@ function resetHost(reason) {
     state.localStream.getTracks().forEach((t) => t.stop());
     state.localStream = null;
   }
-  for (const pc of state.viewerPcs.values()) pc.close();
+  for (const pc of state.viewerPcs.values()) {
+    stopBitrateAdaptation(pc);
+    pc.close();
+  }
   state.viewerPcs.clear();
   if (state.ws) {
     state.ws.onclose = null;
@@ -701,6 +798,47 @@ function bindEvents() {
 
   $("fit-btn").addEventListener("click", toggleFit);
   applyFit(); // 应用初始画面模式（占满）
+
+  // 控制条自动隐藏：鼠标在画面上 2 秒不动自动隐藏，移动鼠标/触碰重新显示；
+  // 鼠标悬停在控制条本身上时保持显示（方便拖动音量条）
+  const playerEl = $("player");
+  let controlsHideTimer = null;
+  const showControlsTemporarily = () => {
+    playerEl.classList.add("controls-visible");
+    clearTimeout(controlsHideTimer);
+    controlsHideTimer = setTimeout(() => {
+      playerEl.classList.remove("controls-visible");
+    }, 2000);
+  };
+  const keepControlsShown = () => {
+    clearTimeout(controlsHideTimer);
+    playerEl.classList.add("controls-visible");
+  };
+  playerEl.classList.add("controls-visible");
+  playerEl.addEventListener("mousemove", showControlsTemporarily);
+  playerEl.addEventListener("touchstart", showControlsTemporarily);
+  playerEl.addEventListener("mouseleave", () => {
+    clearTimeout(controlsHideTimer);
+    playerEl.classList.remove("controls-visible");
+  });
+  for (const id of ["mute-btn", "volume-range", "fit-btn", "fs-btn"]) {
+    $(id).addEventListener("mouseenter", keepControlsShown);
+    $(id).addEventListener("mouseleave", showControlsTemporarily);
+  }
+
+  // 自定义房间号：刷新页面后保留上次填写的值（localStorage 持久化）
+  const CUSTOM_ROOM_KEY = "screlink.customRoom";
+  const customRoomEl = $("custom-room");
+  if (customRoomEl) {
+    const saved = localStorage.getItem(CUSTOM_ROOM_KEY);
+    if (saved) customRoomEl.value = saved;
+    customRoomEl.addEventListener("input", () => {
+      // 实时规范化：大写、只保留字母数字、最长 8 位
+      const clean = customRoomEl.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+      customRoomEl.value = clean;
+      localStorage.setItem(CUSTOM_ROOM_KEY, clean);
+    });
+  }
 
   // 诊断工具：在观看页 F12 控制台运行 __screlinkDebug() 查看连接与视频状态
   window.__screlinkDebug = () => {
