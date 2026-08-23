@@ -19,22 +19,37 @@ export function lanIPv4s() {
 }
 
 /**
- * 把 /livekit 的 WebSocket 单向代理到 LiveKit（targetBase，如 ws://host.docker.internal:7880）。
+ * 把 /livekit 的 WebSocket 双向代理到 LiveKit（targetBase，如 ws://host.docker.internal:7880）。
  * 这样浏览器用「同源 wss/ws」连接，规避 HTTPS 页面连明文 ws 的混合内容拦截。
+ * 关键：先等上游 LiveKit 连好，再转发客户端消息（缓冲首帧，避免竞态丢包）；转发子协议。
  */
 function attachLiveKitProxy(server, targetBase) {
   const wss = new WebSocketServer({ noServer: true });
   wss.on("connection", (clientWs, req) => {
     const targetPath = (req.url || "").replace(/^\/livekit/, "") || "/";
-    const upstream = new WebSocket(targetBase + targetPath);
+    const protoHeader = req.headers["sec-websocket-protocol"];
+    const protocols = protoHeader ? protoHeader.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    const upstream = protocols.length
+      ? new WebSocket(targetBase + targetPath, protocols)
+      : new WebSocket(targetBase + targetPath);
+    const buffer = [];
+    let upOpen = false;
+    upstream.on("open", () => {
+      upOpen = true;
+      for (const d of buffer) upstream.send(d);
+      buffer.length = 0;
+    });
     upstream.on("message", (d) => clientWs.readyState === WebSocket.OPEN && clientWs.send(d));
-    clientWs.on("message", (d) => upstream.readyState === WebSocket.OPEN && upstream.send(d));
     upstream.on("close", () => clientWs.close());
-    clientWs.on("close", () => upstream.close());
     upstream.on("error", (e) => {
       console.error("livekit proxy upstream error:", e?.message);
       clientWs.close();
     });
+    clientWs.on("message", (d) => {
+      if (upOpen) upstream.send(d);
+      else buffer.push(d);
+    });
+    clientWs.on("close", () => upstream.close());
   });
   server.on("upgrade", (req, socket, head) => {
     if (!req.url || !req.url.startsWith("/livekit")) return; // 其它（如 /ws）交给信令 WSS
