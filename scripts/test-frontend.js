@@ -37,7 +37,7 @@ for (const id of refs) if (!htmlIds.has(id)) missing.push(id);
 check(missing.length === 0, `app.js 引用 ${refs.size} 个 id 全部存在于 HTML` + (missing.length ? `；缺失: ${missing.join(", ")}` : ""));
 
 // 4) 关键 id 是否齐全（功能性列表，跟随当前 UI）
-const essential = ["app-version","tab-join","tab-host","join-panel","host-panel","room-input","join-btn","share-btn","audio-checkbox","resolution-select","fps-select","custom-room","secure-hint","room-code","share-link","copy-link","lan-links","viewer-count","preview-video","stop-btn","remote-video","viewer-status","unmute-btn","player","mute-btn","volume-range","fit-btn","fs-btn","quality-select-viewer","viewer-room","leave-btn","toast"];
+const essential = ["app-version","tab-join","tab-host","join-panel","host-panel","room-input","join-btn","share-btn","audio-checkbox","resolution-select","fps-select","game-mode","high-codec","custom-room","secure-hint","room-code","share-link","copy-link","lan-links","viewer-count","preview-video","stop-btn","remote-video","viewer-status","unmute-btn","player","mute-btn","volume-range","fit-btn","fs-btn","quality-select-viewer","viewer-room","leave-btn","toast"];
 const missingEssential = essential.filter((id) => !htmlIds.has(id));
 check(missingEssential.length === 0, "关键元素 id 齐全" + (missingEssential.length ? `；缺失: ${missingEssential.join(", ")}` : ""));
 
@@ -52,6 +52,8 @@ check(html.includes('<video id="remote-video"'), "观看端有 remote-video");
 check(html.includes('<video id="preview-video"'), "主机端有 preview-video");
 check(html.includes('type="checkbox" id="audio-checkbox"'), "含系统声音开关");
 check(html.includes('id="resolution-select"') && html.includes('id="fps-select"'), "含分辨率×帧率画质选择");
+check(html.includes('id="game-mode"'), "含游戏模式开关");
+check(html.includes('id="high-codec"'), "含高质量编码(VP9/AV1)开关");
 check(html.includes('id="fit-btn"'), "含画面模式切换(占满/适应)");
 
 // 7) 运行时加载校验：用 vm + DOM 桩执行 app.js 顶层代码，
