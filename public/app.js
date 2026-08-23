@@ -53,22 +53,18 @@ const FPS_SPEC = {
   "30": { label: "30fps", bitrateFactor: 1.0 },
   "60": { label: "60fps", bitrateFactor: 1.5 },
 };
-/** 读取画质/帧率下拉，组合出推流参数（与后端/自适应码率共用的唯一入口）
-   游戏模式：强制 60fps + contentHint=motion + 帧率优先（流畅），高码率 */
+/** 读取画质/帧率下拉，组合出推流参数（与后端/自适应码率共用的唯一入口） */
 function buildQuality() {
-  const gameMode = !!$("game-mode")?.checked;
   const res = $("resolution-select")?.value || "720";
-  let fps = $("fps-select")?.value || "30";
-  if (gameMode) fps = "60";
+  const fps = $("fps-select")?.value || "30";
   const r = RESOLUTION_SPEC[res] || RESOLUTION_SPEC["720"];
   const f = FPS_SPEC[fps] || FPS_SPEC["30"];
   return {
-    label: `${r.label} @ ${f.label}${gameMode ? " · 游戏" : ""}`,
+    label: `${r.label} @ ${f.label}`,
     frameRate: { ideal: Number(fps), max: Number(fps) },
     maxBitrate: Math.round(r.maxBitrate * f.bitrateFactor),
-    contentHint: gameMode ? "motion" : r.contentHint,
-    degradation: gameMode ? "maintain-framerate" : fps === "60" ? "maintain-framerate" : "maintain-resolution",
-    gameMode,
+    contentHint: r.contentHint,
+    degradation: fps === "60" ? "maintain-framerate" : "maintain-resolution",
   };
 }
 
@@ -214,25 +210,16 @@ function createPc(label) {
   return pc;
 }
 
-/** 编码器优先级：默认安全（VP8/H264，规避 Windows VP9/AV1 黑屏）；
-   游戏模式+高质量编码 则优先 VP9/AV1（压缩率更高，游戏画面更清晰） */
-function codecOrder() {
-  const gameMode = !!$("game-mode")?.checked;
-  const highCodec = !!$("high-codec")?.checked;
-  return gameMode && highCodec ? ["VP9", "AV1", "VP8", "H264"] : ["VP8", "H264"];
-}
-
 /**
- * 按 codecOrder() 设置视频编码器偏好。
- * 默认限定 VP8 / H.264 修复 Windows Chromium 协商 VP9/AV1 的硬件解码黑屏；
- * 游戏模式 + 高质量编码时优先 VP9/AV1 换取更清晰。
+ * 把视频编码器限定为 VP8 / H.264。
+ * 修复 Windows 上 Chromium 内核协商到 VP9/AV1 时硬件解码异常导致的黑屏。
  */
 function pinVideoCodecs(pc) {
   try {
     const caps = RTCRtpSender.getCapabilities?.("video");
     if (!caps) return;
     const pref = [];
-    for (const name of codecOrder()) {
+    for (const name of ["VP8", "H264"]) {
       const found = caps.codecs.find(
         (c) => c.mimeType.toLowerCase() === `video/${name.toLowerCase()}`
       );

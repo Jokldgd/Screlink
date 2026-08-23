@@ -1,6 +1,6 @@
 {
   "name": "screlink",
-  "version": "0.8.0",
+  "version": "0.6.7",
   "description": "Screlink —— 轻量级浏览器屏幕共享：主机一键共享屏幕，观看者凭房间链接在浏览器中实时观看。信令服务器使用 Node.js，音视频通过 WebRTC 点对点传输。",
   "license": "MIT",
   "type": "module",

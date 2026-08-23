@@ -34,12 +34,6 @@ function payloadOf(msg) {
   return out;
 }
 
-/** 结构化日志：输出单行 JSON，便于云端采集（可观测性，见 docs/PERF.md）。 */
-function logStructured(event, fields = {}) {
-  const line = { ts: new Date().toISOString(), level: "info", event, ...fields };
-  console.log(JSON.stringify(line));
-}
-
 /**
  * 信令服务器：负责房间管理与 WebRTC 信令转发。
  * 拓扑：星形（mesh）——主机与每个观看者各建一条 P2P 连接，
@@ -54,8 +48,6 @@ export class SignalingServer {
       sessionsServed: 0,
       peakConcurrentViewers: 0,
       startedAt: Date.now(),
-      /** 各类型转发消息计数（可观测性） */
-      messages: { offer: 0, answer: 0, ice: 0, renegotiate: 0 },
     };
     this.heartbeat = setInterval(() => this.pingAll(), config.heartbeatIntervalMs);
     this.heartbeat.unref?.();
@@ -163,7 +155,6 @@ export class SignalingServer {
     peer.role = "host";
     peer.room = room;
     this.stats.roomsCreated++;
-    logStructured("room-created", { room: code });
     this.send(peer, {
       type: "created",
       room: formatRoomCode(code),
@@ -188,7 +179,6 @@ export class SignalingServer {
       this.stats.peakConcurrentViewers,
       room.viewers.size
     );
-    logStructured("viewer-joined", { room: formatRoomCode(code), viewerCount: room.viewers.size });
     this.send(peer, {
       type: "joined",
       room: formatRoomCode(code),
@@ -209,7 +199,6 @@ export class SignalingServer {
    */
   relay(peer, msg) {
     if (!peer.room) return this.sendError(peer, "not-in-room");
-    if (this.stats.messages[msg.type] !== undefined) this.stats.messages[msg.type]++;
     let target = null;
     if (peer.role === "host") {
       target = peer.room.viewers.get(msg.to);
@@ -228,7 +217,6 @@ export class SignalingServer {
     if (peer.role === "host") {
       // 主机离开 = 房间关闭，通知所有观看者
       this.rooms.delete(room.code);
-      logStructured("room-closed", { room: formatRoomCode(room.code), reason, viewers: room.viewers.size });
       for (const viewer of room.viewers.values()) {
         viewer.room = null;
         viewer.role = null;
@@ -237,28 +225,12 @@ export class SignalingServer {
     } else if (peer.role === "viewer") {
       room.viewers.delete(peer.id);
       peer.role = null;
-      logStructured("viewer-left", { room: formatRoomCode(room.code), viewerCount: room.viewers.size });
       this.send(room.host, {
         type: "viewer-left",
         peerId: peer.id,
         viewerCount: room.viewers.size,
       });
     }
-  }
-
-  /** 各房间明细（可观测性） */
-  roomList() {
-    const list = [];
-    for (const room of this.rooms.values()) {
-      list.push({
-        room: formatRoomCode(room.code),
-        viewers: room.viewers.size,
-        viewerIds: [...room.viewers.keys()],
-        createdAt: room.createdAt,
-        ageMs: Date.now() - room.createdAt,
-      });
-    }
-    return list;
   }
 
   snapshot() {

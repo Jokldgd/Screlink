@@ -2,17 +2,6 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer），格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [Unreleased] — 正在开发 v0.8.0
-
-### 新增
-
-- **游戏模式**（高画质/高帧率游戏共享优化）：
-  - 主机新增「🎮 游戏模式」开关：强制 60fps、`contentHint=motion`、`degradation=maintain-framerate`（帧率优先，运动画面更流畅），高码率
-  - 主机新增「高质量编码（VP9/AV1）」开关：游戏模式下优先 VP9/AV1（压缩率更高，画面更清晰）；默认关闭以规避部分 Windows 上 VP9/AV1 硬件解码黑屏
-- **可观测性（预设优化 #4）**：
-  - 新增 `GET /api/stats`：服务器运行状态（房间数、观看者数、峰值并发、各类型转发消息计数、更新时长）+ 各房间明细（房间号、观看者数、创建时间、存活时长）+ TURN 配置状态
-  - **结构化日志**：房间创建/关闭、观看者加入/离开等关键生命周期事件输出单行 JSON（`{ts,level,event,...}`），便于云端采集与告警
-
 ## [0.6.7] - 2026-08-23
 
 ### 新增

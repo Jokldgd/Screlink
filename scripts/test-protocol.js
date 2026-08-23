@@ -68,13 +68,6 @@ const main = async () => {
   assert.equal(cfg.iceServers[0].urls[0], "stun:stun.l.google.com:19302");
   ok("config iceServers has STUN");
 
-  const stats0 = await fetch(`${base}/api/stats`).then((r) => r.json());
-  assert.equal(stats0.status, "ok");
-  assert.equal(stats0.version, pkg.version);
-  assert.ok(stats0.messages && typeof stats0.messages.offer === "number");
-  assert.ok(Array.isArray(stats0.roomsDetail));
-  ok("stats endpoint basic shape");
-
   const index = await fetch(`${base}/`).then((r) => r.text());
   assert.ok(index.includes("Screlink"));
   assert.equal(await fetch(`${base}/%2e%2e%2F%2e%2e%2Fpackage.json`).then((r) => r.status), 403);
@@ -125,14 +118,6 @@ const main = async () => {
   host.send({ type: "ice", to: joined1.peerId, candidate: { candidate: "c:h" } });
   assert.deepEqual((await v1.waitFor((m) => m.type === "ice" && m.from === created.peerId)).candidate, { candidate: "c:h" });
   ok("offer/answer/ice relayed both ways");
-
-  // 可观测性：房间与转发计数可在 /api/stats 反映（此时 v1 已加入，viewers=1）
-  const statsNow = await fetch(`${base}/api/stats`).then((r) => r.json());
-  assert.ok(statsNow.rooms >= 1, "rooms>=1");
-  assert.equal(statsNow.viewers, 1, "viewers 反映当前房间人数");
-  assert.ok(statsNow.messages.offer >= 1, "offer 转发计数累积");
-  assert.ok(statsNow.roomsDetail.some((d) => d.room === room), "roomsDetail 包含当前房间");
-  ok("api/stats 反映房间与转发计数");
 
   // ---------- 重连消息（renegotiate）观看者->主机 ----------
   v1.send({ type: "renegotiate" });
