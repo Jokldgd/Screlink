@@ -2,7 +2,21 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer），格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.6.0] - 2026-08-22
+
+### 新增
+
+- **流畅档（1080p · 60fps）**：主机画质下拉新增「流畅」档，帧率上限 60fps、码率上限 12Mbps，并通过 `contentHint: "motion"` + `degradationPreference: "maintain-framerate"` 保证带宽不足时优先维持帧率，运动画面更顺滑
+- 自动档默认提升到 60fps（8Mbps），中等/低档也上调码率；画面更流畅
+- 各档位设置 `contentHint`（motion=流畅 / detail=锐利）
+
 ## [0.5.1] - 2026-08-22
+
+### 修复
+
+- 修复 `state` 在 `QUALITY` 声明前引用导致的 TDZ 加载崩溃（当时页面交互失效）；新增前端静态/加载/负载测试
+
+## [0.5.0] - 2026-08-22
 
 ### 修复
 

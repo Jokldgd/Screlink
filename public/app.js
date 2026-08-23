@@ -34,12 +34,14 @@ let appConfig = {
   lanHttpsUrls: [],
 };
 
-/* 推流画质档位：帧率上限 + 码率上限（经 sender.setParameters 下发） */
+/* 推流画质档位：帧率上限 + 码率上限（经 sender.setParameters 下发）
+   contentHint: "motion" 偏向流畅（60fps 运动保留），"detail" 偏向锐利（静态文字更清晰） */
 const QUALITY = {
-  auto: { label: "自动", frameRate: { ideal: 30, max: 60 }, maxBitrate: 4_000_000 },
-  high: { label: "高", frameRate: { ideal: 30, max: 60 }, maxBitrate: 6_000_000 },
-  medium: { label: "中", frameRate: { ideal: 24, max: 30 }, maxBitrate: 3_000_000 },
-  low: { label: "低", frameRate: { ideal: 15, max: 20 }, maxBitrate: 1_500_000 },
+  smooth: { label: "流畅", frameRate: { ideal: 60, max: 60 }, maxBitrate: 12_000_000, contentHint: "motion" },
+  auto:   { label: "自动", frameRate: { ideal: 60, max: 60 }, maxBitrate: 8_000_000, contentHint: "detail" },
+  high:   { label: "高", frameRate: { ideal: 30, max: 30 }, maxBitrate: 6_000_000, contentHint: "detail" },
+  medium: { label: "中", frameRate: { ideal: 30, max: 30 }, maxBitrate: 3_000_000, contentHint: "detail" },
+  low:    { label: "低", frameRate: { ideal: 24, max: 24 }, maxBitrate: 2_000_000, contentHint: "detail" },
 };
 
 const ERR_TEXT = {
@@ -234,9 +236,12 @@ async function startSharing() {
   setBusy($("share-btn"), false);
 
   state.localStream = stream;
-  // 应用帧率上限
+  // 应用帧率上限与编码倾向（motion=流畅 / detail=锐利）
   for (const track of stream.getVideoTracks()) {
     track.applyConstraints({ frameRate: quality.frameRate }).catch(() => {});
+    if (quality.contentHint) {
+      try { track.contentHint = quality.contentHint; } catch { /* ignore */ }
+    }
   }
   $("preview-video").srcObject = stream;
 
@@ -295,7 +300,7 @@ function setupViewerPc(peerId) {
     .catch((err) => console.error("createOffer failed", err));
 }
 
-/** 按当前画质档位设置视频发送码率上限 */
+/** 按当前画质档位设置视频发送码率上限与降级策略 */
 function applyMaxBitrate(pc) {
   if (!state.quality) return;
   for (const sender of pc.getSenders()) {
@@ -304,8 +309,11 @@ function applyMaxBitrate(pc) {
       const params = sender.getParameters();
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
       params.encodings[0].maxBitrate = state.quality.maxBitrate;
+      // 流畅档：带宽不足时优先保帧率（维持 60fps），而不是保分辨率
+      params.degradationPreference =
+        state.quality.contentHint === "motion" ? "maintain-framerate" : "balanced";
       sender.setParameters(params).catch(() => {});
-      dbg("host: set maxBitrate", state.quality.maxBitrate);
+      dbg("host: set maxBitrate", state.quality.maxBitrate, "degradation:", params.degradationPreference);
     } catch (err) {
       console.warn("setParameters failed", err);
     }
