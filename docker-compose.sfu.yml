@@ -14,8 +14,8 @@ services:
       SCRELINK_TURN: "turn:${PUBLIC_IP}:3478?transport=udp,turn:${PUBLIC_IP}:3478?transport=tcp"
       SCRELINK_TURN_USER: "${TURN_USER}"
       SCRELINK_TURN_PASS: "${TURN_PASS}"
-      # LiveKit 接入（浏览器可达的公网地址；Screlink 后端据此签发 token）
-      LIVEKIT_URL: "ws://${PUBLIC_IP}:7880"
+      # LiveKit 接入（wss 公网地址；Screlink 后端据此签发 token）
+      LIVEKIT_URL: "wss://${PUBLIC_IP}:7880"
       LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
     networks: [screlink]
@@ -25,9 +25,11 @@ services:
     image: livekit/livekit-server:latest
     restart: unless-stopped
     network_mode: host
-    command: --config /etc/livekit.yaml
+    # 用自签证书开启 TLS(wss)；证书由 scripts/gen-livekit-cert.js 生成到 certs/livekit/
+    command: --config /etc/livekit.yaml --tls-cert /certs/livekit/cert.pem --tls-key /certs/livekit/key.pem
     volumes:
       - ./deploy/livekit.yaml:/etc/livekit.yaml:ro
+      - ./certs/livekit:/certs/livekit:ro
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
 
