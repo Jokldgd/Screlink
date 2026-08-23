@@ -4,6 +4,8 @@
 
 ## [0.8.1] - 2026-08-23
 
+> 独立版本：在 v0.6.7 屏幕共享基础上，针对「画面偏糊 + 卡顿」做画质优化，以独立 tag 发布（与语音版 v0.7.1 主线分开）。
+
 ### 变更
 
 - **画面画质优化（针对「偏糊 + 卡顿」）**：
@@ -187,4 +189,5 @@
 - **冒烟测试**：`npm test` 覆盖建房间、加入、多人、信令双向转发、离开/关闭通知、错误码
 - **文档**：README、架构说明（ARCHITECTURE.md）、信令协议（PROTOCOL.md）
 
+[0.8.1]: https://github.com/Jokldgd/Screlink/releases/tag/v0.8.1
 [0.1.0]: https://github.com/Jokldgd/Screlink/releases/tag/v0.1.0
