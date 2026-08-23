@@ -44,9 +44,9 @@ let appConfig = {
      maintain-framerate  保帧率（可能降分辨率）——适合播放视频/动态内容
      maintain-resolution 保分辨率（可能降帧率）——适合静态屏幕/文字，清晰可读 */
 const RESOLUTION_SPEC = {
-  "360": { label: "360p", maxBitrate: 1_200_000, contentHint: "motion" },
-  "720": { label: "720p", maxBitrate: 3_000_000, contentHint: "detail" },
-  "1080": { label: "1080p", maxBitrate: 6_000_000, contentHint: "detail" },
+  "360": { label: "360p", maxBitrate: 1_600_000, contentHint: "motion" },
+  "720": { label: "720p", maxBitrate: 4_000_000, contentHint: "detail" },
+  "1080": { label: "1080p", maxBitrate: 8_000_000, contentHint: "detail" },
 };
 const FPS_SPEC = {
   "15": { label: "15fps", bitrateFactor: 0.6 },
@@ -377,12 +377,12 @@ function applyBitrate(pc, bps) {
  *   持续平稳  -> 缓慢回升（利用空闲带宽，不超档位原始上限）
  * 每个观看者独立调节，互不影响。 */
 const BITRATE_STEPS = [
-  800_000, 1_000_000, 1_500_000, 2_000_000, 3_000_000,
-  4_000_000, 6_000_000, 8_000_000, 10_000_000, 12_000_000,
+  1_000_000, 1_500_000, 2_000_000, 3_000_000, 4_000_000,
+  6_000_000, 8_000_000, 10_000_000, 12_000_000, 16_000_000,
 ];
-const ADAPT_INTERVAL_MS = 2000; // 每 2s 采样一次
-const LOSS_DOWN = 0.08;         // 丢包率 > 8%：立即降档
-const LOSS_UP = 0.02;           // 丢包率 < 2%：视为平稳
+const ADAPT_INTERVAL_MS = 1500; // 每 1.5s 采样一次（更快适应）
+const LOSS_DOWN = 0.12;         // 丢包率 > 12%：才降档（更迟降，保住画质）
+const LOSS_UP = 0.015;          // 丢包率 < 1.5%：视为平稳
 const UP_AFTER = 3;             // 连续 3 次平稳（约 6s）后回升一档
 
 function stepDownBitrate(cur) {
@@ -465,9 +465,9 @@ function onRenegotiate(msg) {
  * 主机针对该观看者的连接调整分辨率缩放与码率上限，再重新协商。
  * 每个观看者独立调节，互不影响（帧率跟随主机推流设置）。 */
 const VIEWER_QUALITY_SPEC = {
-  "1080": { scaleH: 1080, maxBitrate: 9_000_000, degradation: "maintain-framerate" },
-  "720":  { scaleH: 720,  maxBitrate: 4_500_000, degradation: "maintain-resolution" },
-  "360":  { scaleH: 360,  maxBitrate: 1_800_000, degradation: "maintain-resolution" },
+  "1080": { scaleH: 1080, maxBitrate: 12_000_000, degradation: "maintain-framerate" },
+  "720":  { scaleH: 720,  maxBitrate: 6_000_000, degradation: "maintain-resolution" },
+  "360":  { scaleH: 360,  maxBitrate: 2_400_000, degradation: "maintain-resolution" },
 };
 
 /** 按观看者选择的清晰度设置该连接的编码参数（分辨率缩放 + 码率上限） */
