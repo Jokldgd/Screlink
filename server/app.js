@@ -1,7 +1,7 @@
 import http from "node:http";
 import https from "node:https";
 import os from "node:os";
-import httpProxy from "http-proxy";
+import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./config.js";
 import { SignalingServer, normalizeRoomCode } from "./signaling.js";
 import { createStaticHandler } from "./static.js";
@@ -23,17 +23,29 @@ export function lanIPv4s() {
  * 用 http-proxy（经实战验证的 WS 代理）处理 upgrade，浏览器用「同源 wss/ws」连接规避混合内容。
  */
 function attachLiveKitProxy(server, targetBase) {
-  const proxy = httpProxy.createProxyServer({ ws: true, target: targetBase, changeOrigin: true });
-  proxy.on("error", (err, _req, res, socketHead) => {
-    console.error("livekit proxy error:", err?.message);
-    if (socketHead && !socketHead.writableEnded) { try { socketHead.end(); } catch { /* ignore */ } }
-    else if (res && !res.headersSent) { try { res.writeHead(502); res.end("502"); } catch { /* ignore */ } }
+  const wss = new WebSocketServer({ noServer: true });
+  wss.on("connection", (clientWs, req) => {
+    // 去掉 /livekit 前缀，LiveKit 只认 /rtc...
+    const targetPath = (req.url || "").replace(/^\/livekit/, "") || "/";
+    const protoHeader = req.headers["sec-websocket-protocol"];
+    const protocols = protoHeader ? protoHeader.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    const upstream = protocols.length
+      ? new WebSocket(targetBase + targetPath, protocols)
+      : new WebSocket(targetBase + targetPath);
+    const buffer = [];
+    let upOpen = false;
+    upstream.on("open", () => { upOpen = true; for (const d of buffer) upstream.send(d); buffer.length = 0; });
+    upstream.on("message", (d) => clientWs.readyState === WebSocket.OPEN && clientWs.send(d));
+    upstream.on("close", () => clientWs.close());
+    upstream.on("error", (e) => { console.error("livekit proxy upstream error:", e?.message); clientWs.close(); });
+    clientWs.on("message", (d) => { if (upOpen) upstream.send(d); else buffer.push(d); });
+    clientWs.on("close", () => upstream.close());
   });
   server.on("upgrade", (req, socket, head) => {
     if (!req.url || !req.url.startsWith("/livekit")) return; // 其它（如 /ws）交给信令 WSS
-    proxy.ws(req, socket, head, { target: targetBase });
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
   });
-  return proxy;
+  return wss;
 }
 
 /**
@@ -118,8 +130,10 @@ export function createApp(options = {}) {
           canPublishData: role === "publisher",
         });
         const jwt = await token.toJwt();
-        // 浏览器通过 Screlink 同源反代连接 LiveKit：主机(wss)、观看者(ws) 均为 /livekit
-        const url = `${req.socket.encrypted ? "wss" : "ws"}://${req.headers.host}/livekit`;
+        // 浏览器通过 Caddy 同源反代连接 LiveKit：主机(wss)/观看者(ws) 均为 /livekit
+        // 后面可能被 Caddy 反代终止 TLS，故用 X-Forwarded-Proto 判断外层协议
+        const outerProto = String(req.headers["x-forwarded-proto"] || (req.socket.encrypted ? "https" : "http")).split(",")[0];
+        const url = `${outerProto === "https" ? "wss" : "ws"}://${req.headers.host}/livekit`;
         res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
         res.end(JSON.stringify({ url, token: jwt, room: `room-${room}`, role }));
       } catch (err) {

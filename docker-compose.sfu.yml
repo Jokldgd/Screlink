@@ -1,38 +1,49 @@
 name: screlink-sfu
 
-# ===== SFU 模式：Screlink(信令) + LiveKit(SFU 媒体) + coturn(NAT) =====
-# 用 SFU 替代 mesh：主机只推一路到 LiveKit，LiveKit 扇出给所有观看者。
-# 约 6-8 人以上或观看者更多时使用此模式。详见 docs/SFU.md
+# ===== SFU 模式（Caddy 反代）：Caddy(入口/自签) + Screlink(信令) + LiveKit(SFU) + coturn =====
+# Caddy 在 8787(http)/8788(https 自签) 入口：/livekit -> LiveKit，其余 -> Screlink。
+# 主机走 wss://IP:8788/livekit（信任一次自签证书），观看者走 ws://IP:8787/livekit。
+# 详见 docs/SFU.md。约 6-8 人以上或更多观看者时使用。
 services:
-  screlink:
-    build: .
+  # Caddy：入口 + TLS(自签) + 反代（WebSocket 久经验证）
+  caddy:
+    image: caddy:2
     restart: unless-stopped
     ports:
       - "8787:8787"   # 观看（HTTP）
-      - "8788:8788"   # 主机共享（HTTPS 自签名）
-    # 让容器能经 host.docker.internal 访问宿主上的 LiveKit（host 网络）
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "8788:8788"   # 主机共享（HTTPS 自签）
+    volumes:
+      - ./deploy/Caddyfile.sfu:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [screlink]
+
+  # Screlink 信令（内网，仅经 Caddy 对外）
+  screlink:
+    build: .
+    restart: unless-stopped
     environment:
       SCRELINK_TURN: "turn:${PUBLIC_IP}:3478?transport=udp,turn:${PUBLIC_IP}:3478?transport=tcp"
       SCRELINK_TURN_USER: "${TURN_USER}"
       SCRELINK_TURN_PASS: "${TURN_PASS}"
-      # LiveKit 内部地址（Screlink 反代到它；浏览器走同源 /livekit）
-      LIVEKIT_INTERNAL_URL: "ws://host.docker.internal:7880"
+      # 同源 /livekit 由 Caddy 路由到 LiveKit；Screlink 自身代理靶（未用）指向 livekit
+      LIVEKIT_INTERNAL_URL: "ws://livekit:7880"
       LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
     networks: [screlink]
 
-  # LiveKit SFU：媒体中心（单节点，host 网络以暴露 UDP 中继段）。明文 ws，TLS 由 Screlink 反代处理
+  # LiveKit SFU（内网；UDP 中继段映射到宿主）
   livekit:
     image: livekit/livekit-server:latest
     restart: unless-stopped
-    network_mode: host
     command: --config /etc/livekit.yaml
     volumes:
       - ./deploy/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "50000-50020:50000-50020/udp"
     environment:
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    networks: [screlink]
 
   # TURN 中继（NAT 穿透兜底）
   coturn:
@@ -49,3 +60,7 @@ services:
 
 networks:
   screlink:
+
+volumes:
+  caddy_data:
+  caddy_config:

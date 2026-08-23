@@ -1,0 +1,30 @@
+# Screlink SFU 模式：Caddy 入口（自签证书）
+#  - HTTP  :8787  -> 观看者；/livekit -> LiveKit，其余 -> Screlink
+#  - HTTPS :8788  -> 主机；tls internal 自签证书；/livekit -> LiveKit，其余 -> Screlink
+# 说明：Caddy 对 WebSocket 反代是久经验证的；主机/观看者首次访问 https://IP:8788 需信任自签证书。
+# 需在 compose 里 expose 8787/8788 到宿主。
+
+{
+  admin off
+}
+
+# 观看者（HTTP，浏览器连 ws://...:8787/livekit 无混合内容问题）
+http://:8787 {
+  handle /livekit/* {
+    reverse_proxy livekit:7880
+  }
+  handle {
+    reverse_proxy screlink:8787
+  }
+}
+
+# 主机（HTTPS 自签，浏览器连 wss://...:8788/livekit）
+https://:8788 {
+  tls internal
+  handle /livekit/* {
+    reverse_proxy livekit:7880
+  }
+  handle {
+    reverse_proxy screlink:8787
+  }
+}
