@@ -12,7 +12,11 @@
     "start": "node server/index.js",
     "start:https": "node server/index.js --https",
     "dev": "node --watch server/index.js",
-    "test": "node scripts/smoke-test.js"
+    "test": "node scripts/smoke-test.js",
+    "test:protocol": "node scripts/test-protocol.js",
+    "test:frontend": "node scripts/test-frontend.js",
+    "test:soak": "node scripts/test-soak.js",
+    "test:all": "node scripts/smoke-test.js && node scripts/test-protocol.js && node scripts/test-frontend.js && node scripts/test-soak.js"
   },
   "keywords": [
     "screen-share",
