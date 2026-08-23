@@ -127,9 +127,9 @@
   </footer>
 
   <script src="app.js"></script>
-  <!-- SFU(LiveKit) 客户端 SDK：配置启用后由 app.js 使用；加载失败则回退 mesh -->
+  <!-- SFU(LiveKit) 客户端 SDK：用 v1.x 以匹配 LiveKit 服务器 1.13.5 的 /rtc 路径；加载失败则回退 mesh -->
   <script type="module">
-    import * as LK from "https://cdn.jsdelivr.net/npm/livekit-client@2/+esm";
+    import * as LK from "https://cdn.jsdelivr.net/npm/livekit-client@1/+esm";
     window.LiveKitClient = LK;
     console.debug("[screlink] LiveKitClient loaded");
   </script>
