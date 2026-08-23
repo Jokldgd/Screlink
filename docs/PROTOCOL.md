@@ -123,8 +123,32 @@ WebSocket 端点：`/ws`。所有消息均为 UTF-8 编码的 JSON 文本，格�
 
 - `iceServers`：客户端构建 `RTCPeerConnection` 时使用的完整 ICE 配置（STUN + 可配置的 TURN 中继）。`turnUrls` 为空时仅含 STUN。
 
+### `GET /api/stats`
+
+可观测性接口：服务器运行状态 + 各房间明细（含各类型转发消息计数）。
+
+```json
+{
+  "status": "ok",
+  "version": "0.8.0",
+  "rooms": 2,
+  "viewers": 5,
+  "roomsCreated": 12,
+  "sessionsServed": 30,
+  "peakConcurrentViewers": 7,
+  "messages": { "offer": 40, "answer": 40, "ice": 120, "renegotiate": 0 },
+  "startedAt": 1784700000000,
+  "uptimeMs": 3600000,
+  "roomsDetail": [
+    { "room": "ABC-123", "viewers": 3, "viewerIds": ["..."], "createdAt": 1784700000000, "ageMs": 60000 }
+  ],
+  "turn": { "configured": false, "urls": [], "maxViewersPerRoom": 8 }
+}
+```
+
 ## 生命周期与清理
 
 - 连接断开（含网络异常、心跳超时、页面关闭）视为离开：观看者离开通知主机；主机离开广播 `host-left` 并销毁房间。
 - 心跳：服务器每 30s 发一次 WS ping，30s 内无 pong 即断开连接。
 - 客户端应在收到 `viewer-left` / `host-left` 后立刻销毁对应 `RTCPeerConnection`。
+- 关键生命周期事件以单行 JSON 输出到日志（`room-created` / `viewer-joined` / `viewer-left` / `room-closed`），便于采集。

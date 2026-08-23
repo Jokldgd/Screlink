@@ -63,17 +63,20 @@ const CONTENT_MODE = {
   static:  { contentHint: "detail", degradation: "maintain-resolution", bitrateFactor: 1.0 },
 };
 function buildQuality() {
+  const gameMode = !!$("game-mode")?.checked;
   const res = $("resolution-select")?.value || "720";
-  const fps = $("fps-select")?.value || "30";
+  let fps = $("fps-select")?.value || "30";
+  if (gameMode) fps = "60";
   const mode = CONTENT_MODE[$("content-mode-select")?.value] || CONTENT_MODE.dynamic;
   const r = RESOLUTION_SPEC[res] || RESOLUTION_SPEC["720"];
   const f = FPS_SPEC[fps] || FPS_SPEC["30"];
   return {
-    label: `${r.label} @ ${f.label}`,
+    label: `${r.label} @ ${f.label}${gameMode ? " · 游戏" : ""}`,
     frameRate: { ideal: Number(fps), max: Number(fps) },
     maxBitrate: Math.round(r.maxBitrate * f.bitrateFactor * mode.bitrateFactor),
-    contentHint: mode.contentHint,
-    degradation: mode.degradation,
+    contentHint: gameMode ? "motion" : mode.contentHint,
+    degradation: gameMode ? "maintain-framerate" : mode.degradation,
+    gameMode,
   };
 }
 
@@ -677,12 +680,19 @@ function setupViewerPc(peerId) {
     .catch((err) => console.error("createOffer failed", err));
 }
 
+/** 编码器优先级：默认安全（VP8/H264，规避 Windows VP9/AV1 黑屏）；
+   游戏模式+高质量编码 则优先 VP9/AV1（压缩率更高，游戏画面更清晰） */
+function codecOrder() {
+  const gameMode = !!$("game-mode")?.checked;
+  const highCodec = !!$("high-codec")?.checked;
+  return gameMode && highCodec ? ["VP9", "AV1", "VP8", "H264"] : ["VP8", "H264"];
+}
 function pinVideoCodecs(pc) {
   try {
     const caps = RTCRtpSender.getCapabilities?.("video");
     if (!caps) return;
     const pref = [];
-    for (const name of ["VP8", "H264"]) {
+    for (const name of codecOrder()) {
       const found = caps.codecs.find(
         (c) => c.mimeType.toLowerCase() === `video/${name.toLowerCase()}`
       );
