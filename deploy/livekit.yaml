@@ -1,0 +1,17 @@
+# LiveKit 单节点配置（SFU）
+# 密钥等由 docker-compose 通过环境变量 LIVEKIT_KEYS 注入（key: secret）。
+# 详见 docs/SFU.md
+
+# WebSocket / HTTP 端口
+port: 7880
+
+rtc:
+  # 对外 UDP 中继段（云防火墙需放行）
+  port_range_start: 50000
+  port_range_end: 50020
+  # 让 LiveKit 自动探测本机公网 IP（需要能访问 STUN）
+  use_external_ip: true
+
+# 允许的容量（可选默认值）
+room:
+  auto_create: true

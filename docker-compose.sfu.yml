@@ -1,0 +1,48 @@
+name: screlink-sfu
+
+# ===== SFU 模式：Screlink(信令) + LiveKit(SFU 媒体) + coturn(NAT) =====
+# 用 SFU 替代 mesh：主机只推一路到 LiveKit，LiveKit 扇出给所有观看者。
+# 约 6-8 人以上或观看者更多时使用此模式。详见 docs/SFU.md
+services:
+  screlink:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8787:8787"   # 观看（HTTP）
+      - "8788:8788"   # 主机共享（HTTPS 自签名）
+    environment:
+      SCRELINK_TURN: "turn:${PUBLIC_IP}:3478?transport=udp,turn:${PUBLIC_IP}:3478?transport=tcp"
+      SCRELINK_TURN_USER: "${TURN_USER}"
+      SCRELINK_TURN_PASS: "${TURN_PASS}"
+      # LiveKit 接入（供 Screlink 后端签发 token 与观看者连接）
+      LIVEKIT_URL: "ws://livekit:7880"
+      LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
+    networks: [screlink]
+
+  # LiveKit SFU：媒体中心（单节点，host 网络以暴露 UDP 中继段）
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    network_mode: host
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./deploy/livekit.yaml:/etc/livekit.yaml:ro
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+
+  # TURN 中继（NAT 穿透兜底）
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./deploy/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    entrypoint: >
+      /bin/sh -c 'printf "user=%s:%s\n" "${TURN_USER}" "${TURN_PASS}" > /tmp/turnuserdb.conf && chmod 600 /tmp/turnuserdb.conf && exec turnserver -c /etc/coturn/turnserver.conf'
+    environment:
+      TURN_USER: "${TURN_USER}"
+      TURN_PASS: "${TURN_PASS}"
+
+networks:
+  screlink:

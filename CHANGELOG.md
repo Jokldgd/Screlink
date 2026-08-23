@@ -2,6 +2,15 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer），格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [Unreleased] — 正在开发 v0.9.0（SFU 迁移）
+
+### 计划/进行中
+
+- **SFU 迁移（LiveKit）**：以 SFU 替代 mesh（星形）拓扑，解决多人同时观看的主机上/CPU 瓶颈
+  - 设计文档：[docs/SFU.md](docs/SFU.md)
+  - 已交付：SFU 设计方案 + 部署基础（`docker-compose.sfu.yml` + `deploy/livekit.yaml`）+ `LIVEKIT_API_KEY/SECRET` 配置项
+  - 待做：Screlink 后端 LiveKit token 接口、前端 LiveKit 推/拉接入（需真实浏览器验收）
+
 ## [0.8.3] - 2026-08-23
 
 ### 修复
