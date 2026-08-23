@@ -308,6 +308,7 @@ function onViewerJoined(msg) {
   const peerId = msg.peerId;
   if (state.viewerPcs.has(peerId)) return;
   setupViewerPc(peerId);
+  reclampViewerCaps(); // 观看数增加 -> 压低各路码率，防主机上行拥塞
 }
 
 /** 为某个观看者建立/重建一条连接并发送 offer（用于新加入或重连） */
@@ -385,6 +386,27 @@ const LOSS_DOWN = 0.10;         // 丢包率 > 10%：才降档（比 12% 稍灵�
 const LOSS_UP = 0.015;          // 丢包率 < 1.5%：视为平稳
 const UP_AFTER = 3;             // 连续 3 次平稳（约 4.5s）后回升一档
 const COOLDOWN_AFTER_DOWN = 6;  // 降档后冷却 6 个采样（约 9s）内不再回升，防止锯齿回弹造成“越到后面越卡”
+// 主机上行预算：mesh 下主机对每个观看者各发一路，总上行 = 观看者数 × 每路码率。
+// 限制此预算，避免多人同时观看时上行拥塞导致全体卡顿。
+const HOST_UPLINK_BUDGET = 20_000_000;
+/** 当前观看者数下，每路应给到的主机上行预算（越高越清晰，但多人时会自动收敛） */
+function perViewerCap() {
+  const n = Math.max(1, state.viewerPcs.size);
+  const budget = HOST_UPLINK_BUDGET / n;
+  const base = state.quality?.maxBitrate || 8_000_000;
+  return Math.max(600_000, Math.min(base, budget));
+}
+/** 观看者数量变化时，把现有观看者的码率上限收敛到新预算（降拥挤） */
+function reclampViewerCaps() {
+  const cap = perViewerCap();
+  for (const pc of state.viewerPcs.values()) {
+    if (pc._bitrate && pc._bitrate > cap) {
+      pc._bitrate = cap;
+      applyBitrate(pc, cap);
+      dbg("host: reclamp to per-viewer cap", cap);
+    }
+  }
+}
 
 function stepDownBitrate(cur) {
   for (let i = BITRATE_STEPS.length - 1; i >= 0; i--) {
@@ -402,7 +424,8 @@ function stepUpBitrate(cur, max) {
 
 function startBitrateAdaptation(pc) {
   stopBitrateAdaptation(pc);
-  const initial = pc._bitrate || state.quality?.maxBitrate || 6_000_000;
+  const cap = perViewerCap();
+  const initial = pc._bitrate || cap;
   const adapt = { initial, prev: null, stableCount: 0, cooldown: 0 };
   pc._adapt = adapt;
   pc._adaptTimer = setInterval(() => {
@@ -430,7 +453,7 @@ function startBitrateAdaptation(pc) {
             adapt.stableCount++;
             if (adapt.stableCount >= UP_AFTER) {
               adapt.stableCount = 0;
-              target = stepUpBitrate(pc._bitrate ?? initial, initial);
+              target = stepUpBitrate(pc._bitrate ?? initial, perViewerCap());
               if (target !== pc._bitrate) dbg(`adapt: stable -> up ${target}`);
             }
           } else {
