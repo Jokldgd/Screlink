@@ -441,7 +441,9 @@ function onOffer(msg) {
           video.addEventListener("click", () => video.play().catch(() => {}), { once: true });
         });
         $("unmute-btn").hidden = false;
+        updateAudioUI();
       });
+      updateAudioUI();
     };
     state.hostPc = pc;
   }
@@ -492,6 +494,32 @@ function resetViewer() {
   showView("landing");
 }
 
+/* ---------------- 观看端控制条（静音/音量/全屏） ---------------- */
+
+function updateAudioUI() {
+  const v = $("remote-video");
+  if (!v) return;
+  $("mute-btn").textContent = v.muted || v.volume === 0 ? "🔇" : "🔊";
+  $("volume-range").value = String(v.volume);
+}
+
+function toggleFullscreen() {
+  const el = $("player");
+  const doc = document;
+  const fsEl = doc.fullscreenElement || doc.webkitFullscreenElement || doc.msFullscreenElement;
+  if (!fsEl) {
+    (el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen)?.call(el);
+  } else {
+    (doc.exitFullscreen || doc.webkitExitFullscreen || doc.msExitFullscreen)?.call(doc);
+  }
+}
+
+function updateFullscreenUI() {
+  const fsEl =
+    document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+  $("fs-btn").textContent = fsEl ? "☒ 退出全屏" : "⛶ 全屏";
+}
+
 /* ---------------- 事件绑定 ---------------- */
 
 function switchTab(mode) {
@@ -526,7 +554,27 @@ function bindEvents() {
     v.muted = false;
     v.play().catch(() => {});
     $("unmute-btn").hidden = true;
+    updateAudioUI();
   });
+
+  // 观看端控制条：静音、音量、全屏
+  $("mute-btn").addEventListener("click", () => {
+    const v = $("remote-video");
+    v.muted = !v.muted;
+    updateAudioUI();
+  });
+
+  $("volume-range").addEventListener("input", () => {
+    const v = $("remote-video");
+    v.volume = Number($("volume-range").value);
+    if (v.volume > 0 && v.muted) v.muted = false;
+    updateAudioUI();
+  });
+
+  $("fs-btn").addEventListener("click", toggleFullscreen);
+  document.addEventListener("fullscreenchange", updateFullscreenUI);
+  document.addEventListener("webkitfullscreenchange", updateFullscreenUI);
+  document.addEventListener("msfullscreenchange", updateFullscreenUI);
 
   // 诊断工具：在观看页 F12 控制台运行 __screlinkDebug() 查看连接与视频状态
   window.__screlinkDebug = () => {
