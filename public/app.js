@@ -21,7 +21,9 @@ const state = {
   micGainNode: null,      // 麦克风发送音量（WebAudio 增益）
   micAudioCtx: null,
   micOutputStream: null,  // 经增益处理后的发送流
-  memberVolumes: new Map(), // 每个成员的接收音量：peerId -> 0~1
+  memberVolumes: new Map(),  // 每个成员的麦克风音量（我听他的声音大小）：peerId -> 0~1
+  outputVolumes: new Map(),  // 每个成员的听筒音量（按成员独立）：peerId -> 0~1
+  baseOutputVolume: 1,       // 自己的听筒基准（总输出乘数，作用于所有成员声音）
   audioPcs: new Map(),    // 语音 mesh：peerId -> RTCPeerConnection（双向音频）
   shareStream: null,      // 本地屏幕共享流（我是共享者时）
   shareOwner: null,       // 当前共享者 peerId（null=无人共享）
@@ -63,20 +65,17 @@ const CONTENT_MODE = {
   static:  { contentHint: "detail", degradation: "maintain-resolution", bitrateFactor: 1.0 },
 };
 function buildQuality() {
-  const gameMode = !!$("game-mode")?.checked;
   const res = $("resolution-select")?.value || "720";
-  let fps = $("fps-select")?.value || "30";
-  if (gameMode) fps = "60";
+  const fps = $("fps-select")?.value || "30";
   const mode = CONTENT_MODE[$("content-mode-select")?.value] || CONTENT_MODE.dynamic;
   const r = RESOLUTION_SPEC[res] || RESOLUTION_SPEC["720"];
   const f = FPS_SPEC[fps] || FPS_SPEC["30"];
   return {
-    label: `${r.label} @ ${f.label}${gameMode ? " · 游戏" : ""}`,
+    label: `${r.label} @ ${f.label}`,
     frameRate: { ideal: Number(fps), max: Number(fps) },
     maxBitrate: Math.round(r.maxBitrate * f.bitrateFactor * mode.bitrateFactor),
-    contentHint: gameMode ? "motion" : mode.contentHint,
-    degradation: gameMode ? "maintain-framerate" : mode.degradation,
-    gameMode,
+    contentHint: mode.contentHint,
+    degradation: mode.degradation,
   };
 }
 
@@ -181,6 +180,7 @@ function handleSignal(msg) {
     case "audio-offer": return onAudioOffer(msg);
     case "audio-answer": return onAudioAnswer(msg);
     case "audio-ice": return onAudioIce(msg);
+    case "audio-reinit": return onAudioReinit(msg);
     case "offer": return onOffer(msg);
     case "answer": return onAnswer(msg);
     case "ice": return onIce(msg);
@@ -273,6 +273,8 @@ function resetRoom(reason) {
   state.micOutputStream = null;
   state.micMuted = false;
   state.memberVolumes.clear();
+  state.outputVolumes.clear();
+  state.baseOutputVolume = 1;
   // 关闭语音 mesh 连接
   for (const pc of state.audioPcs.values()) closeAudioPc(pc);
   state.audioPcs.clear();
@@ -313,52 +315,69 @@ function updateMembers() {
       : state.shareOwner === id
         ? "共享中"
         : "成员";
-    // 麦克风 / 扬声器图标：点击展开对应的音量滑条（内嵌调节）
+    // 麦克风 / 听筒图标：各自展开独立的音量滑条
     const micIco = document.createElement("button");
     micIco.type = "button";
     micIco.className = "vol-ico";
     micIco.textContent = "🎤";
-    micIco.title = isSelf ? "我的麦克风音量" : `${name} 的麦克风音量`;
+    micIco.title = isSelf ? "我的麦克风音量（说出去的音量）" : `${name} 的麦克风音量`;
     const spkIco = document.createElement("button");
     spkIco.type = "button";
     spkIco.className = "vol-ico";
-    if (isSelf) {
-      spkIco.disabled = true;
-      spkIco.textContent = "🔇";
-      spkIco.title = "你听不到自己（无需调节）";
-    } else {
-      spkIco.textContent = "🔊";
-      spkIco.title = `${name} 的扬声器音量`;
-    }
+    spkIco.textContent = "🔊";
+    spkIco.title = "听筒音量（所有成员声音的总音量，包括你自己调节）";
     row.append(dot, span, tag, micIco, spkIco);
-    // 音量滑条：自己=麦克风发送音量（WebAudio 增益），他人=该成员的接收音量
-    const slider = document.createElement("input");
-    slider.type = "range";
-    slider.min = "0";
-    slider.max = "1";
-    slider.step = "0.01";
-    slider.className = "member-volume";
-    slider.title = isSelf ? "我的麦克风音量" : `${name} 的音量`;
-    slider.hidden = true;
-    slider.value = String(
+
+    // 滑条1：麦克风音量（自己=发送增益；他人=该成员声音大小，独立）
+    const micSlider = document.createElement("input");
+    micSlider.type = "range";
+    micSlider.min = "0";
+    micSlider.max = "1";
+    micSlider.step = "0.01";
+    micSlider.className = "member-volume";
+    micSlider.title = isSelf ? "我的麦克风音量" : `${name} 的麦克风音量`;
+    micSlider.hidden = true;
+    micSlider.value = String(
       isSelf ? (state.micGainNode?.gain.value ?? 1) : (state.memberVolumes.get(id) ?? 1)
     );
-    const toggleSlider = () => {
-      slider.hidden = !slider.hidden;
-    };
-    micIco.addEventListener("click", toggleSlider);
-    spkIco.addEventListener("click", toggleSlider);
-    slider.addEventListener("input", () => {
-      const v = Number(slider.value);
+    micIco.addEventListener("click", () => { micSlider.hidden = !micSlider.hidden; });
+    micSlider.addEventListener("input", () => {
+      const v = Number(micSlider.value);
       if (isSelf) {
         if (state.micGainNode) state.micGainNode.gain.value = v;
       } else {
         state.memberVolumes.set(id, v);
         const pc = state.audioPcs.get(id);
-        if (pc?._audioEl) pc._audioEl.volume = v;
+        if (pc) applyOutputVolume(pc);
       }
     });
-    li.append(row, slider);
+
+    // 滑条2：听筒音量（自己=听筒基准；他人=该成员听筒音量，独立）
+    const spkSlider = document.createElement("input");
+    spkSlider.type = "range";
+    spkSlider.min = "0";
+    spkSlider.max = "1";
+    spkSlider.step = "0.01";
+    spkSlider.className = "member-volume";
+    spkSlider.title = isSelf ? "我的听筒音量（总基准）" : `${name} 的听筒音量`;
+    spkSlider.hidden = true;
+    spkSlider.value = String(
+      isSelf ? state.baseOutputVolume : (state.outputVolumes.get(id) ?? 1)
+    );
+    spkIco.addEventListener("click", () => { spkSlider.hidden = !spkSlider.hidden; });
+    spkSlider.addEventListener("input", () => {
+      const v = Number(spkSlider.value);
+      if (isSelf) {
+        state.baseOutputVolume = v;
+        for (const pc of state.audioPcs.values()) applyOutputVolume(pc);
+      } else {
+        state.outputVolumes.set(id, v);
+        const pc = state.audioPcs.get(id);
+        if (pc) applyOutputVolume(pc);
+      }
+    });
+
+    li.append(row, micSlider, spkSlider);
     list.appendChild(li);
   };
   add(state.peerId, "我", true);
@@ -370,24 +389,99 @@ function updateMembers() {
 
 /* ---------------- 语音（mesh） ---------------- */
 
+/* ---------------- 语音降噪（RNNoise AI 增强） ---------------- */
+
+let _rnnoisePromise = null;
+/** 懒加载 RNNoise（wasm 内嵌于 rnnoise-sync.js，同源加载） */
+function loadRnnoise() {
+  if (!_rnnoisePromise) {
+    _rnnoisePromise = (async () => {
+      const syncMod = await import("/rnnoise/rnnoise-sync.js");
+      const wasmInterface = syncMod.default();
+      const procMod = await import("/rnnoise/RnnoiseProcessor.js");
+      const RnnoiseProcessor = procMod.default;
+      return new RnnoiseProcessor(wasmInterface);
+    })().catch((err) => {
+      console.error("RNNoise 加载失败", err);
+      return null;
+    });
+  }
+  return _rnnoisePromise;
+}
+
+/**
+ * 构建 AI 降噪处理节点（ScriptProcessorNode + RNNoise，480 帧逐块降噪）。
+ * 返回 null 表示加载失败（调用方应回退到直连）。
+ */
+async function createRnnoiseNode(ctx, source) {
+  const denoise = await loadRnnoise();
+  if (!denoise) return null;
+  const proc = ctx.createScriptProcessor(2048, 1, 1);
+  let pending = new Float32Array(0);
+  proc.onaudioprocess = (e) => {
+    const input = e.inputBuffer.getChannelData(0);
+    const out = e.outputBuffer.getChannelData(0);
+    // 累积输入（自动重采样到 ctx 采样率 48000，RNNoise 固定 480 帧/48kHz）
+    const nb = new Float32Array(pending.length + input.length);
+    nb.set(pending);
+    nb.set(input, pending.length);
+    // 逐 480 帧降噪（就地处理）
+    const frames = Math.floor(nb.length / 480);
+    for (let i = 0; i < frames; i++) {
+      try {
+        denoise.processAudioFrame(nb.subarray(i * 480, (i + 1) * 480), true);
+      } catch (err) {
+        console.warn("rnnoise frame failed", err);
+      }
+    }
+    const usable = frames * 480;
+    if (usable >= out.length) {
+      out.set(nb.subarray(0, out.length));
+      pending = nb.subarray(out.length);
+    } else {
+      out.set(nb.subarray(0, usable), 0);
+      out.fill(0, usable);
+      pending = nb.subarray(usable);
+    }
+  };
+  source.connect(proc);
+  return proc;
+}
+
 async function openMic() {
   if (!navigator.mediaDevices?.getUserMedia) {
     toast("语音不可用：当前页面不是 HTTPS 安全连接（麦克风被浏览器禁用），请用 https:// 地址打开");
     return;
   }
+  const nsMode = $("ns-select")?.value || "basic";
   try {
     const raw = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: nsMode === "basic", // 基础档用浏览器内置
+      },
     });
     state.micStream = raw;
     // 用 WebAudio 增益控制麦克风发送音量（输入音量可调）
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
       await ctx.resume();
       const src = ctx.createMediaStreamSource(raw);
       const gain = ctx.createGain();
       const dest = ctx.createMediaStreamDestination();
-      src.connect(gain);
+      if (nsMode === "ai") {
+        // AI 增强：RNNoise 降噪节点插在增益前
+        const nsNode = await createRnnoiseNode(ctx, src);
+        if (nsNode) {
+          nsNode.connect(gain);
+          dbg("mic: AI 降噪（RNNoise）已启用");
+        } else {
+          src.connect(gain);
+          toast("AI 降噪加载失败，已回退到无降噪");
+        }
+      } else {
+        src.connect(gain);
+      }
       gain.connect(dest);
       state.micAudioCtx = ctx;
       state.micGainNode = gain;
@@ -439,6 +533,28 @@ function toggleMic() {
   $("mic-btn").textContent = state.micMuted ? "🎤 麦克风关" : "🎤 麦克风开";
 }
 
+/** 降噪档位切换后重建语音链路（关闭旧链 → 通知对方重建 → 重新开麦 → 重新建立语音连接） */
+async function reapplyMicSettings() {
+  // 先通知所有成员：我要重建语音连接（对方关闭旧连接，等待我的新 offer）
+  for (const id of state.members) send({ type: "audio-reinit", to: id });
+  for (const pc of state.audioPcs.values()) closeAudioPc(pc);
+  state.audioPcs.clear();
+  if (state.micStream) {
+    state.micStream.getTracks().forEach((t) => t.stop());
+    state.micStream = null;
+  }
+  if (state.micAudioCtx) {
+    try { state.micAudioCtx.close(); } catch { /* ignore */ }
+    state.micAudioCtx = null;
+  }
+  state.micGainNode = null;
+  state.micOutputStream = null;
+  state.micMuted = false;
+  toast("正在应用降噪设置…");
+  await openMic();
+  for (const id of state.members) establishAudio(id);
+}
+
 function createPc(label) {
   const pc = new RTCPeerConnection({ iceServers: appConfig.iceServers });
   const pendingIce = [];
@@ -455,7 +571,7 @@ function createPc(label) {
   return pc;
 }
 
-/** 播放远程音频：mesh 下每条连接一个隐藏 audio 元素（音量按用户对该成员的设置） */
+/** 播放远程音频：mesh 下每条连接一个隐藏 audio 元素（听筒总音量 × 该成员麦克风音量） */
 function attachAudioOutput(pc) {
   pc.ontrack = (e) => {
     const stream = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
@@ -465,10 +581,18 @@ function attachAudioOutput(pc) {
     audioEl.style.display = "none";
     document.body.appendChild(audioEl);
     audioEl.srcObject = stream;
-    audioEl.volume = state.memberVolumes.get(pc._peerId) ?? 1; // 应用该成员的音量设置
+    applyOutputVolume(pc);
     audioEl.play().catch(() => {});
     pc._audioEl = audioEl;
   };
+}
+
+/** 应用音量：audioEl.volume = 听筒基准 × 该成员听筒音量 × 该成员麦克风音量（三个独立值相乘） */
+function applyOutputVolume(pc) {
+  if (!pc?._audioEl) return;
+  const member = state.memberVolumes.get(pc._peerId) ?? 1;
+  const output = state.outputVolumes.get(pc._peerId) ?? 1;
+  pc._audioEl.volume = state.baseOutputVolume * output * member;
 }
 
 function closeAudioPc(pc) {
@@ -502,8 +626,16 @@ function establishAudio(peerId) {
 
 function onAudioOffer(msg) {
   const peerId = msg.from;
-  // 已有连接（通常我发起过）：忽略对方的重复 offer，避免建两条连接
-  if (state.audioPcs.has(peerId)) return;
+  // 已有连接：若连接已失效（closed/failed，如对方重建过语音链）则允许重建，否则忽略重复 offer
+  if (state.audioPcs.has(peerId)) {
+    const old = state.audioPcs.get(peerId);
+    if (old.connectionState === "closed" || old.connectionState === "failed") {
+      closeAudioPc(old);
+      state.audioPcs.delete(peerId);
+    } else {
+      return;
+    }
+  }
   const pc = createPc(`audio:${peerId}`);
   pc.kind = "audio";
   pc._peerId = peerId;
@@ -537,6 +669,16 @@ function onAudioAnswer(msg) {
 function onAudioIce(msg) {
   const pc = state.audioPcs.get(msg.from);
   if (pc) pc.queueIce(msg.candidate);
+}
+
+/** 对方重建了语音链：关闭与该成员的旧连接，等待对方的新 offer */
+function onAudioReinit(msg) {
+  const peerId = msg.from;
+  const pc = state.audioPcs.get(peerId);
+  if (pc) {
+    closeAudioPc(pc);
+    state.audioPcs.delete(peerId);
+  }
 }
 
 function onPeerJoined(msg) {
@@ -680,19 +822,16 @@ function setupViewerPc(peerId) {
     .catch((err) => console.error("createOffer failed", err));
 }
 
-/** 编码器优先级：默认安全（VP8/H264，规避 Windows VP9/AV1 黑屏）；
-   游戏模式+高质量编码 则优先 VP9/AV1（压缩率更高，游戏画面更清晰） */
-function codecOrder() {
-  const gameMode = !!$("game-mode")?.checked;
-  const highCodec = !!$("high-codec")?.checked;
-  return gameMode && highCodec ? ["VP9", "AV1", "VP8", "H264"] : ["VP8", "H264"];
-}
+/**
+ * 把视频编码器限定为 VP8 / H.264。
+ * 修复 Windows 上 Chromium 内核协商到 VP9/AV1 时硬件解码异常导致的黑屏。
+ */
 function pinVideoCodecs(pc) {
   try {
     const caps = RTCRtpSender.getCapabilities?.("video");
     if (!caps) return;
     const pref = [];
-    for (const name of codecOrder()) {
+    for (const name of ["VP8", "H264"]) {
       const found = caps.codecs.find(
         (c) => c.mimeType.toLowerCase() === `video/${name.toLowerCase()}`
       );
@@ -1070,6 +1209,18 @@ function bindEvents() {
         : `https://${location.hostname}/`;
     }
     $("secure-warning").hidden = false;
+  }
+
+  // 降噪档位：记住选择；切换后重建语音链（对房间内所有语音生效）
+  const NS_KEY = "screlink.nsMode";
+  const nsSelect = $("ns-select");
+  if (nsSelect) {
+    const savedNs = localStorage.getItem(NS_KEY);
+    if (savedNs) nsSelect.value = savedNs;
+    nsSelect.addEventListener("change", () => {
+      localStorage.setItem(NS_KEY, nsSelect.value);
+      if (state.room) reapplyMicSettings();
+    });
   }
 
   $("join-btn").addEventListener("click", enterRoom);

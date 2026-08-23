@@ -34,12 +34,6 @@ function payloadOf(msg) {
   return out;
 }
 
-/** 结构化日志：输出单行 JSON，便于云端采集（可观测性，见 docs/PERF.md）。 */
-function logStructured(event, fields = {}) {
-  const line = { ts: new Date().toISOString(), level: "info", event, ...fields };
-  console.log(JSON.stringify(line));
-}
-
 /**
  * 信令服务器：通用房间模型（v0.7.1 语音版本）。
  * 一个房间 = 一组对等成员（peers），每个成员：
@@ -57,11 +51,6 @@ export class SignalingServer {
       sessionsServed: 0,
       peakConcurrentMembers: 0,
       startedAt: Date.now(),
-      /** 各类型转发消息计数（可观测性） */
-      messages: {
-        offer: 0, answer: 0, ice: 0, renegotiate: 0, "set-quality": 0,
-        "audio-offer": 0, "audio-answer": 0, "audio-ice": 0,
-      },
     };
     this.heartbeat = setInterval(() => this.pingAll(), config.heartbeatIntervalMs);
     this.heartbeat.unref?.();
@@ -147,6 +136,7 @@ export class SignalingServer {
       case "audio-offer":
       case "audio-answer":
       case "audio-ice":
+      case "audio-reinit":
         return this.relay(peer, msg);
       case "share-start":
         return this.handleShareStart(peer);
@@ -182,7 +172,6 @@ export class SignalingServer {
     this.rooms.set(code, room);
     peer.room = room;
     this.stats.roomsCreated++;
-    logStructured("room-created", { room: code });
     this.send(peer, {
       type: "created",
       room: formatRoomCode(code),
@@ -209,7 +198,6 @@ export class SignalingServer {
     );
     // 通知新人：已有成员列表（据此建立语音 mesh）
     const otherIds = [...room.peers.keys()].filter((id) => id !== peer.id);
-    logStructured("viewer-joined", { room: formatRoomCode(code), memberCount: room.peers.size });
     this.send(peer, {
       type: "joined",
       room: formatRoomCode(code),
@@ -253,7 +241,6 @@ export class SignalingServer {
    */
   relay(peer, msg) {
     if (!peer.room) return this.sendError(peer, "not-in-room");
-    if (this.stats.messages[msg.type] !== undefined) this.stats.messages[msg.type]++;
     const target = peer.room.peers.get(msg.to);
     if (!target) return;
     this.send(target, { type: msg.type, from: peer.id, ...payloadOf(msg) });
@@ -279,24 +266,7 @@ export class SignalingServer {
     // 房间空了就销毁
     if (room.peers.size === 0) {
       this.rooms.delete(room.code);
-      logStructured("room-closed", { room: formatRoomCode(room.code), reason, members: 0 });
     }
-  }
-
-  /** 各房间明细（可观测性） */
-  roomList() {
-    const list = [];
-    for (const room of this.rooms.values()) {
-      list.push({
-        room: formatRoomCode(room.code),
-        members: room.peers.size,
-        memberIds: [...room.peers.keys()],
-        shareOwner: room.shareOwner,
-        createdAt: room.createdAt,
-        ageMs: Date.now() - room.createdAt,
-      });
-    }
-    return list;
   }
 
   snapshot() {
