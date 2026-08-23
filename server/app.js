@@ -68,6 +68,24 @@ export function createApp(options = {}) {
       return;
     }
 
+    if (url.pathname === "/api/stats") {
+      // 可观测性：服务器运行状态 + 各房间明细（见 docs/PERF.md）
+      const body = {
+        status: "ok",
+        version: config.version,
+        ...signaling.snapshot(),
+        roomsDetail: signaling.roomList(),
+        turn: {
+          configured: config.turnUrls.length > 0,
+          urls: config.turnUrls,
+          maxViewersPerRoom: config.maxViewersPerRoom,
+        },
+      };
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(body));
+      return;
+    }
+
     staticHandler(req, res);
   };
 
