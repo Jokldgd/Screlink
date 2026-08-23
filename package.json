@@ -16,7 +16,8 @@
     "test:protocol": "node scripts/test-protocol.js",
     "test:frontend": "node scripts/test-frontend.js",
     "test:soak": "node scripts/test-soak.js",
-    "test:all": "node scripts/smoke-test.js && node scripts/test-protocol.js && node scripts/test-frontend.js && node scripts/test-soak.js"
+    "test:all": "node scripts/smoke-test.js && node scripts/test-protocol.js && node scripts/test-frontend.js && node scripts/test-soak.js",
+    "bench": "node scripts/bench.js"
   },
   "keywords": [
     "screen-share",
