@@ -622,8 +622,25 @@ function updateFullscreenUI() {
   const fsEl =
     document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
   $("fs-btn").textContent = fsEl ? "☒ 退出全屏" : "⛶ 全屏";
-  // 用 class 标记全屏状态，CSS 据此铺满（比 :fullscreen 伪类更可靠）
-  $("player").classList.toggle("is-fullscreen", !!fsEl);
+  const p = $("player");
+  const v = $("remote-video");
+  p.classList.toggle("is-fullscreen", !!fsEl);
+  // 全屏：直接设内联尺寸（比 CSS 更可靠），铺满视口；退出时清空恢复
+  if (fsEl) {
+    p.style.width = "100vw";
+    p.style.height = "100vh";
+    v.style.width = "100vw";
+    v.style.height = "100vh";
+    v.style.maxHeight = "none";
+    v.style.maxWidth = "none";
+  } else {
+    p.style.width = "";
+    p.style.height = "";
+    v.style.width = "";
+    v.style.height = "";
+    v.style.maxHeight = "";
+    v.style.maxWidth = "";
+  }
 }
 
 /* ---------------- 事件绑定 ---------------- */
