@@ -136,6 +136,34 @@ export function createApp(options = {}) {
       return;
     }
 
+    // 普通 HTTP 也反代到 LiveKit（如 /rtc/validate 校验 token），非 WebSocket 的请求
+    if (url.pathname.startsWith("/livekit")) {
+      const rest = url.pathname.replace(/^\/livekit/, "") || "/";
+      const base = config.livekit.url.replace(/^ws/, "http"); // ws:// -> http://
+      const target = base + rest + url.search;
+      try {
+        const opts = { method: req.method, headers: { ...req.headers, host: new URL(target).host } };
+        if (!["GET", "HEAD"].includes(req.method)) { opts.body = req; opts.duplex = "half"; }
+        const resp = await fetch(target, opts);
+        const respHeaders = { "content-type": resp.headers.get("content-type") || "application/octet-stream" };
+        res.writeHead(resp.status, respHeaders);
+        if (resp.body) {
+          const reader = resp.body.getReader();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (!res.write(value)) await new Promise((r) => res.once("drain", r));
+          }
+        }
+        res.end();
+      } catch (err) {
+        console.error("livekit http proxy error:", err?.message);
+        res.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
+        res.end("502 proxy error");
+      }
+      return;
+    }
+
     staticHandler(req, res);
   };
 
