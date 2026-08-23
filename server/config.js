@@ -55,12 +55,13 @@ export const config = {
 
   /**
    * SFU（LiveKit）配置：配置了 apiKey+secret 即启用 SFU 模式（见 docs/SFU.md）。
-   *  LIVEKIT_URL           LiveKit WebSocket 地址（如 ws://<host>:7880）
+   *  LIVKIT 媒体经同源反代（/livekit -> LiveKit），浏览器用 wss/ws 同源连接。
+   *  LIVEKIT_INTERNAL_URL   Screlink 容器访问 LiveKit 的地址（host.docker.internal:7880）
    *  LIVEKIT_API_KEY       LiveKit 密钥 key
    *  LIVEKIT_API_SECRET    LiveKit 密钥 secret
    */
   livekit: {
-    url: process.env.LIVEKIT_URL || "",
+    url: process.env.LIVEKIT_INTERNAL_URL || "ws://host.docker.internal:7880",
     apiKey: process.env.LIVEKIT_API_KEY || "",
     apiSecret: process.env.LIVEKIT_API_SECRET || "",
   },

@@ -1,6 +1,7 @@
 import http from "node:http";
 import https from "node:https";
 import os from "node:os";
+import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./config.js";
 import { SignalingServer, normalizeRoomCode } from "./signaling.js";
 import { createStaticHandler } from "./static.js";
@@ -15,6 +16,31 @@ export function lanIPv4s() {
     }
   }
   return out;
+}
+
+/**
+ * 把 /livekit 的 WebSocket 单向代理到 LiveKit（targetBase，如 ws://host.docker.internal:7880）。
+ * 这样浏览器用「同源 wss/ws」连接，规避 HTTPS 页面连明文 ws 的混合内容拦截。
+ */
+function attachLiveKitProxy(server, targetBase) {
+  const wss = new WebSocketServer({ noServer: true });
+  wss.on("connection", (clientWs, req) => {
+    const targetPath = (req.url || "").replace(/^\/livekit/, "") || "/";
+    const upstream = new WebSocket(targetBase + targetPath);
+    upstream.on("message", (d) => clientWs.readyState === WebSocket.OPEN && clientWs.send(d));
+    clientWs.on("message", (d) => upstream.readyState === WebSocket.OPEN && upstream.send(d));
+    upstream.on("close", () => clientWs.close());
+    clientWs.on("close", () => upstream.close());
+    upstream.on("error", (e) => {
+      console.error("livekit proxy upstream error:", e?.message);
+      clientWs.close();
+    });
+  });
+  server.on("upgrade", (req, socket, head) => {
+    if (!req.url || !req.url.startsWith("/livekit")) return; // 其它（如 /ws）交给信令 WSS
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+  });
+  return wss;
 }
 
 /**
@@ -99,8 +125,10 @@ export function createApp(options = {}) {
           canPublishData: role === "publisher",
         });
         const jwt = await token.toJwt();
+        // 浏览器通过 Screlink 同源反代连接 LiveKit：主机(wss)、观看者(ws) 均为 /livekit
+        const url = `${req.socket.encrypted ? "wss" : "ws"}://${req.headers.host}/livekit`;
         res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-        res.end(JSON.stringify({ url: config.livekit.url, token: jwt, room: `room-${room}`, role }));
+        res.end(JSON.stringify({ url, token: jwt, room: `room-${room}`, role }));
       } catch (err) {
         res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify({ error: "token-error", message: String(err?.message || err) }));
@@ -113,10 +141,12 @@ export function createApp(options = {}) {
 
   const httpServer = http.createServer(handleRequest);
   const wss = signaling.attach(httpServer);
+  attachLiveKitProxy(httpServer, config.livekit.url);
 
   // 始终同时创建 HTTPS（自签名）监听：观看者走 HTTP(8787)、主机走 HTTPS(8788) 以满足屏幕捕获的安全上下文要求
   const httpsServer = https.createServer(loadTlsOptions(), handleRequest);
   const wssTls = signaling.attach(httpsServer);
+  attachLiveKitProxy(httpsServer, config.livekit.url);
 
   return { signaling, httpServer, httpsServer, wss, wssTls };
 }
