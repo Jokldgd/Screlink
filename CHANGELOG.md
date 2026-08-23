@@ -2,6 +2,12 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer），格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.6.5] - 2026-08-22
+
+### 修复
+
+- 全屏铺满更健壮：播放容器与视频在全屏时改为显式 `100vw / 100vh`（替代 `100%`），避免个别浏览器在全屏顶层下百分比解析不准导致不铺满；`object-fit` 仍按「占满(cover)/适应(contain)」选择
+
 ## [0.6.4] - 2026-08-22
 
 ### 修复

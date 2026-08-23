@@ -236,8 +236,8 @@ button.big { width: 100%; padding: 14px; font-size: 16px; }
 .player:-webkit-full-screen,
 .player:-moz-full-screen,
 .player:-ms-fullscreen {
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
   background: #000;
 }
 .player.is-fullscreen #remote-video,
@@ -245,12 +245,13 @@ button.big { width: 100%; padding: 14px; font-size: 16px; }
 .player:-webkit-full-screen #remote-video,
 .player:-moz-full-screen #remote-video,
 .player:-ms-fullscreen #remote-video {
-  width: 100% !important;
-  height: 100% !important;
+  width: 100vw !important;
+  height: 100vh !important;
   max-height: none !important;
   max-width: none !important;
   border-radius: 0 !important;
   border: 0 !important;
+  /* object-fit 仍按 data-fit 选择（占满=cover / 适应=contain），不在此强制 */
 }
 .unmute-btn {
   position: absolute;
