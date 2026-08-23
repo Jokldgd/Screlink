@@ -275,8 +275,9 @@ async function startSharingSfu() {
   state.localStream = stream;
   $("preview-video").srcObject = stream;
   for (const t of stream.getVideoTracks()) t.applyConstraints({ frameRate: quality.frameRate }).catch(() => {});
-  // 先经信令建房拿到房间号，再等待 onCreated 触发 doSfuPublish
-  await new Promise((resolve) => connectSocket(() => { send({ type: "create" }); resolve(); }));
+  // 先经信令建房（支持自定义房间号）拿到房间号，再等待 onCreated 触发 doSfuPublish
+  const custom = $("custom-room")?.value.trim().toUpperCase() || "";
+  await new Promise((resolve) => connectSocket(() => { send(custom ? { type: "create", room: custom } : { type: "create" }); resolve(); }));
   state.sfuPendingPublish = true;
 }
 async function doSfuPublish() {
@@ -400,8 +401,8 @@ function onCreated(msg) {
 
 function onViewerJoined(msg) {
   if (state.role !== "host") return;
+  updateViewerCount(msg.viewerCount); // 无论 mesh/SFU 都更新实时人数
   if (sfuActive()) return; // SFU 模式：媒体由 LiveKit 分发，无需为观看者建 mesh 连接
-  updateViewerCount(msg.viewerCount);
   const peerId = msg.peerId;
   if (state.viewerPcs.has(peerId)) return;
   setupViewerPc(peerId);
