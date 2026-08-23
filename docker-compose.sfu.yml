@@ -14,8 +14,8 @@ services:
       SCRELINK_TURN: "turn:${PUBLIC_IP}:3478?transport=udp,turn:${PUBLIC_IP}:3478?transport=tcp"
       SCRELINK_TURN_USER: "${TURN_USER}"
       SCRELINK_TURN_PASS: "${TURN_PASS}"
-      # LiveKit 接入（供 Screlink 后端签发 token 与观看者连接）
-      LIVEKIT_URL: "ws://livekit:7880"
+      # LiveKit 接入（浏览器可达的公网地址；Screlink 后端据此签发 token）
+      LIVEKIT_URL: "ws://${PUBLIC_IP}:7880"
       LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
     networks: [screlink]
