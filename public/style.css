@@ -229,23 +229,28 @@ button.big { width: 100%; padding: 14px; font-size: 16px; }
 }
 #remote-video[data-fit="cover"] { object-fit: cover; }   /* 占满：裁切铺满，无黑边 */
 #remote-video[data-fit="contain"] { object-fit: contain; }/* 适应：显示全部，可能有黑边 */
-/* 全屏：视频铺满整个视口，object-fit 由 data-fit 决定（占满/适应） */
+/* 全屏：视频铺满整个视口，object-fit 由 data-fit 决定（占满/适应）
+   用 JS 添加的 .is-fullscreen class 触发（比 :fullscreen 伪类更可靠），同时保留伪类兜底 */
+.player.is-fullscreen,
 .player:fullscreen,
 .player:-webkit-full-screen,
 .player:-moz-full-screen,
 .player:-ms-fullscreen {
+  width: 100%;
+  height: 100%;
   background: #000;
 }
+.player.is-fullscreen #remote-video,
 .player:fullscreen #remote-video,
 .player:-webkit-full-screen #remote-video,
 .player:-moz-full-screen #remote-video,
 .player:-ms-fullscreen #remote-video {
-  width: 100vw;
-  height: 100vh;
-  max-height: none;
-  max-width: none;
-  border-radius: 0;
-  border: 0;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  max-width: none !important;
+  border-radius: 0 !important;
+  border: 0 !important;
 }
 .unmute-btn {
   position: absolute;

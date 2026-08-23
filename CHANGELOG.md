@@ -2,6 +2,12 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer），格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [0.6.4] - 2026-08-22
+
+### 修复
+
+- **全屏未自动铺满**：改用 JS 在进入/退出全屏时给播放容器加 `.is-fullscreen` class 来触发铺满样式（此前依赖 `:fullscreen` 伪类，部分浏览器匹配不到导致样式不生效）；CSS 用 `!important` 强制视频填满视口，`object-fit` 依旧按「占满/适应」选择
+
 ## [0.6.3] - 2026-08-22
 
 ### 新增

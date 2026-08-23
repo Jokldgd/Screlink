@@ -622,6 +622,8 @@ function updateFullscreenUI() {
   const fsEl =
     document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
   $("fs-btn").textContent = fsEl ? "☒ 退出全屏" : "⛶ 全屏";
+  // 用 class 标记全屏状态，CSS 据此铺满（比 :fullscreen 伪类更可靠）
+  $("player").classList.toggle("is-fullscreen", !!fsEl);
 }
 
 /* ---------------- 事件绑定 ---------------- */
