@@ -1,0 +1,22 @@
+# 本地开发用 LiveKit 配置（无需 Docker/云服务）
+# 启动：livekit-server --config livekit.local.yaml
+port: 7880
+
+rtc:
+  # WebRTC 媒体端口
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  # 本机/局域网测试不需要公网 IP 探测
+  use_external_ip: false
+
+# 本地密钥（与 server/.env 中 LIVEKIT_API_KEY / LIVEKIT_API_SECRET 保持一致）
+keys:
+  devkey: devsecret
+
+room:
+  # 最后一人离开后 60 秒兜底回收媒体房间
+  empty_timeout: 60
+
+logging:
+  level: info

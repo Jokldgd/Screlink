@@ -1,0 +1,92 @@
+# RoomVoice 生产部署：livekit + coturn + redis + postgres + signal + nginx
+# 使用前：
+#   1. 将 DOMAIN 替换为你的域名（.env 或环境变量）
+#   2. 准备 TLS 证书：
+#      - deploy/nginx/tls/  (fullchain.pem / privkey.pem)  → nginx 443
+#      - deploy/livekit/tls/ (cert.pem / key.pem)          → LiveKit WSS (5349 TURN-TLS)
+#      本地验证阶段可用 HTTP，将 nginx 的 443 server 注释掉即可
+#   3. 修改 livekit.yaml 中的 keys 与 coturn 的 static-auth-secret（两者必须一致）
+# 启动：docker compose up -d --build
+services:
+  signal:
+    build: ../server
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      STORE_MODE: redis
+      REDIS_URL: redis://redis:6379
+      # 与 livekit.yaml 中 keys 保持一致
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret
+      # 客户端连 LiveKit 的 wss 地址（走 nginx /livekit 同域反代）
+      LIVEKIT_URL: wss://${DOMAIN:-localhost}/livekit
+      # 服务端管理 API（容器内直连）
+      LIVEKIT_HOST: http://livekit:7880
+      ROOM_MAX_MEMBERS: "10"
+    depends_on:
+      - redis
+      - livekit
+    networks: [app]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly no
+    networks: [app]
+
+  # 预留：用户注册/登录（MVP 未使用，后续接 PostgreSQL 存用户表）
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: roomvoice
+      POSTGRES_PASSWORD: roomvoice
+      POSTGRES_DB: roomvoice
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [app]
+
+  livekit:
+    image: livekit/livekit-server:v1.8.4
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+      - ./livekit/tls:/etc/livekit/tls:ro
+    ports:
+      - "7880:7880" # websocket
+      - "7881:7881" # rtc tcp
+      - "50000-50100:50000-50100/udp" # rtc udp
+      - "3478:3478/udp" # turn
+      - "3478:3478/tcp"
+      - "5349:5349/tcp" # turn tls
+    networks: [app]
+
+  # TURN 服务器：host 网络模式以获得真实公网 IP（NAT 穿透关键）
+  coturn:
+    image: coturn/coturn:4.6
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - ./livekit/tls:/etc/coturn/tls:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+
+  nginx:
+    build: ../client
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/tls:/etc/nginx/tls:ro
+    depends_on:
+      - signal
+    networks: [app]
+
+volumes:
+  pgdata:
+
+networks:
+  app:

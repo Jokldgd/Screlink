@@ -1,0 +1,21 @@
+{
+  "name": "room-voice",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Discord 式临时房间语音软件 —— 先创建房间获取房间号，凭房间号加入；语音 + 屏幕共享（LiveKit SFU）",
+  "type": "module",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "build:client": "npm run build -w client",
+    "start:server": "npm run start -w server",
+    "preview:client": "npm run preview -w client"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

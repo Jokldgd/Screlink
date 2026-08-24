@@ -1,0 +1,21 @@
+{
+  "name": "@room-voice/server",
+  "private": true,
+  "version": "1.0.0",
+  "description": "临时语音房信令/业务服务器：Fastify + ws + Redis(可降级内存) + LiveKit token",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.0.1",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.2.0",
+    "ioredis": "^5.4.1",
+    "livekit-server-sdk": "^2.8.1",
+    "nanoid": "^5.0.9"
+  }
+}
